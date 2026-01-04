@@ -36,6 +36,7 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getAllStudents: () => api.get('/auth/students'),
+  getStudentPerformance: (studentId) => api.get(`/auth/students/${studentId}/performance`),
 };
 
 export const quizAPI = {

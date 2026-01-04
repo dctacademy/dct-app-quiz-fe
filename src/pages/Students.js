@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { authAPI } from '../services/api';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
 
@@ -28,10 +28,7 @@ function Students() {
 
   const fetchStudents = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3040/api/auth/students', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await authAPI.getAllStudents();
       setStudents(response.data);
     } catch (error) {
       showToast(error.response?.data?.message || 'Failed to fetch students', 'error');
@@ -52,10 +49,7 @@ function Students() {
     setLoadingPerformance(true);
     setSelectedStudent({ id: studentId, name: studentName });
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:3040/api/auth/students/${studentId}/performance`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await authAPI.getStudentPerformance(studentId);
       setPerformanceData(response.data);
     } catch (error) {
       showToast(error.response?.data?.message || 'Failed to fetch performance data', 'error');
