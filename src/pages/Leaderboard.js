@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { quizAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 function Leaderboard() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalUsers, setTotalUsers] = useState(0);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
+    if (user && user.role !== 'admin') {
+      navigate('/user');
+      return;
+    }
     fetchLeaderboard();
-  }, []);
+  }, [user, navigate]);
 
   const fetchLeaderboard = async () => {
     try {

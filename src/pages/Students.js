@@ -29,7 +29,7 @@ function Students() {
   const fetchStudents = async () => {
     try {
       const response = await authAPI.getAllStudents();
-      setStudents(response.data);
+      setStudents(response.data.students);
     } catch (error) {
       showToast(error.response?.data?.message || 'Failed to fetch students', 'error');
       if (error.response?.status === 403) {

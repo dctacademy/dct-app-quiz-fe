@@ -45,9 +45,6 @@ function Navbar() {
               <Link to="/my-quizzes" className="nav-link">
                 📚 My Quizzes
               </Link>
-              <Link to="/leaderboard" className="nav-link">
-                🏆 Leaderboard
-              </Link>
             </>
           )}
           <button className="btn btn-danger" onClick={handleLogout} style={{ marginLeft: '10px' }}>
