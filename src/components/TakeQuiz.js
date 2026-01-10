@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { submissionAPI } from '../services/api';
 import { FormattedText } from '../utils/formatText';
+import CodeDragDropQuestion from './CodeDragDropQuestion';
+import CodeDragDropResults from './CodeDragDropResults';
 
 function TakeQuiz({ quiz, onComplete }) {
   const storageKey = `quiz_progress_${quiz._id}`;
@@ -208,34 +210,66 @@ function TakeQuiz({ quiz, onComplete }) {
           {/* Detailed Results */}
           {result.detailedResults && result.detailedResults.length > 0 && (
             <div style={{ marginBottom: '24px' }}>
-              <h3 style={{ marginBottom: '16px', color: '#667eea', fontSize: '17px', fontWeight: '600' }}>🔍 Review Your Answers</h3>
+              <h3 style={{ 
+                marginBottom: '20px', 
+                color: '#2d3748', 
+                fontSize: '20px', 
+                fontWeight: '700',
+                borderBottom: '3px solid #667eea',
+                paddingBottom: '12px'
+              }}>
+                🔍 Review Your Answers
+              </h3>
               {result.detailedResults.map((item, index) => (
                 <div 
                   key={item.questionId} 
                   style={{ 
-                    marginBottom: '16px',
-                    padding: '16px',
-                    border: `2px solid ${item.isCorrect ? '#48bb78' : '#f56565'}`,
-                    borderRadius: '10px',
-                    backgroundColor: item.isCorrect ? '#f0fff4' : '#fff5f5'
+                    marginBottom: '20px',
+                    padding: '0',
+                    border: 'none',
+                    borderRadius: '12px',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                    overflow: 'hidden'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-                    <span style={{ 
-                      fontSize: '18px', 
-                      marginRight: '8px',
-                      color: item.isCorrect ? '#48bb78' : '#f56565'
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '16px 20px',
+                    backgroundColor: item.isCorrect ? '#f0fff4' : '#fff5f5',
+                    borderLeft: `5px solid ${item.isCorrect ? '#48bb78' : '#f56565'}`
+                  }}>
+                    <div style={{ 
+                      fontSize: '24px', 
+                      marginRight: '12px',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      backgroundColor: item.isCorrect ? '#48bb78' : '#f56565',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: '700'
                     }}>
                       {item.isCorrect ? '✓' : '✗'}
-                    </span>
-                    <h4 style={{ margin: 0, flex: 1, fontSize: '14px', fontWeight: '600', color: '#2d3748' }}>
+                    </div>
+                    <h4 style={{ margin: 0, flex: 1, fontSize: '15px', fontWeight: '600', color: '#2d3748', lineHeight: '1.5' }}>
                       Question {index + 1}: <FormattedText text={item.question} />
                     </h4>
                   </div>
 
-                  <div style={{ marginLeft: '26px' }}>
-                    {/* Show essay grading details if available */}
-                    {item.essayGrading ? (
+                  <div style={{ padding: '20px' }}>
+                    {/* Show CodeDragDrop results if available */}
+                    {item.codeDragDropGrading ? (
+                      <CodeDragDropResults
+                        question={item}
+                        userAnswer={item.selectedAnswer}
+                        codeDragDropGrading={item.codeDragDropGrading}
+                      />
+                    ) : item.essayGrading ? (
+                      /* Show essay grading details if available */
                       <div>
                         <div style={{ 
                           marginBottom: '12px',
@@ -615,6 +649,14 @@ function TakeQuiz({ quiz, onComplete }) {
                 ⚠️ Copy-paste is disabled for essay questions to ensure original work
               </small>
             </div>
+          )}
+
+          {currentQ.questionType === 'CodeDragDrop' && (
+            <CodeDragDropQuestion
+              question={currentQ}
+              currentAnswer={answers[currentQ._id]}
+              onAnswerChange={(answer) => handleAnswerSelect(currentQ._id, answer)}
+            />
           )}
 
           {(currentQ.questionType === 'MCQ' || currentQ.questionType === 'TrueFalse' || currentQ.questionType === 'CodeSnippet' || !currentQ.questionType) && (

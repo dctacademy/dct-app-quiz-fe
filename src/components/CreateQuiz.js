@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { quizAPI } from '../services/api';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
+import CodeDragDropForm from './CodeDragDropForm';
 
 function CreateQuiz({ onQuizCreated }) {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ function CreateQuiz({ onQuizCreated }) {
   const [pastedText, setPastedText] = useState('');
   const [contentSource, setContentSource] = useState(''); // 'pdf', 'url', 'text', 'questionBank', 'copyQuiz'
   const [textType, setTextType] = useState('article'); // 'article' or 'code'
+  const [articleType, setArticleType] = useState('regular'); // 'regular' or 'transcript'
   const [showCodeReference, setShowCodeReference] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState('javascript');
   const [availableQuizzes, setAvailableQuizzes] = useState([]);
@@ -51,8 +53,13 @@ function CreateQuiz({ onQuizCreated }) {
     TrueFalse: false,
     FillInBlank: false,
     CodeSnippet: false,
-    Essay: false
+    Essay: false,
+    CodeDragDrop: false
   });
+  
+  // CodeDragDrop questions state
+  const [codeDragDropQuestions, setCodeDragDropQuestions] = useState([]);
+  const [showCodeDragDropForm, setShowCodeDragDropForm] = useState(false);
   
   // Essay grading settings
   const [essayGradingMode, setEssayGradingMode] = useState('afterSubmission');
@@ -172,27 +179,38 @@ function CreateQuiz({ onQuizCreated }) {
     setError('');
     setSuccess('');
 
-    if (!pdfFile && !formData.contentUrl && !pastedText.trim() && selectedQuizIds.length === 0 && selectedBankQuestions.length === 0) {
-      setError('Please provide a PDF file, URL, paste text/code, select existing quizzes, or select questions from the question bank');
-      return;
+    // If only CodeDragDrop is selected, we only need the manual questions
+    if (isOnlyCodeDragDrop) {
+      if (codeDragDropQuestions.length === 0) {
+        setError('Please add at least one CodeDragDrop question');
+        return;
+      }
+    } else {
+      // For other question types, we need content source
+      if (!pdfFile && !formData.contentUrl && !pastedText.trim() && selectedQuizIds.length === 0 && selectedBankQuestions.length === 0 && codeDragDropQuestions.length === 0) {
+        setError('Please provide a PDF file, URL, paste text/code, select existing quizzes, select questions from the question bank, or add CodeDragDrop questions');
+        return;
+      }
     }
     
-    // Validate multi-difficulty selection
+    // Validate multi-difficulty selection (only for AI-generated content)
     const hasSelectedDifficulty = Object.values(selectedDifficulties).some(v => v);
     const totalQuestions = Object.entries(selectedDifficulties)
       .filter(([_, isSelected]) => isSelected)
       .reduce((sum, [difficulty, _]) => sum + (difficultyQuestions[difficulty] || 0), 0);
     
-    if ((pdfFile || formData.contentUrl || pastedText.trim()) && hasSelectedDifficulty && totalQuestions === 0) {
-      setError('Please specify number of questions for selected difficulty levels');
-      return;
-    }
-    
-    // Validate question type selection (only for AI-generated quizzes)
-    const hasSelectedTypes = Object.values(selectedQuestionTypes).some(v => v);
-    if ((pdfFile || formData.contentUrl || pastedText.trim()) && !hasSelectedTypes) {
-      setError('Please select at least one question type');
-      return;
+    if (!isOnlyCodeDragDrop) {
+      if ((pdfFile || formData.contentUrl || pastedText.trim()) && hasSelectedDifficulty && totalQuestions === 0) {
+        setError('Please specify number of questions for selected difficulty levels');
+        return;
+      }
+      
+      // Validate question type selection (only for AI-generated quizzes)
+      const hasSelectedTypes = Object.values(selectedQuestionTypes).some(v => v);
+      if ((pdfFile || formData.contentUrl || pastedText.trim()) && !hasSelectedTypes) {
+        setError('Please select at least one question type');
+        return;
+      }
     }
 
     setLoading(true);
@@ -222,6 +240,9 @@ function CreateQuiz({ onQuizCreated }) {
       if (pastedText.trim()) {
         data.append('pastedText', pastedText.trim());
         data.append('textType', textType);
+        if (textType === 'article') {
+          data.append('articleType', articleType);
+        }
         if (textType === 'code') {
           data.append('showCodeReference', showCodeReference);
           data.append('codeLanguage', codeLanguage);
@@ -238,32 +259,46 @@ function CreateQuiz({ onQuizCreated }) {
         data.append('selectedBankQuestions', JSON.stringify(selectedBankQuestions));
       }
       
-      // Handle multi-difficulty or single difficulty
-      if (hasSelectedDifficulty && totalQuestions > 0) {
-        // Multi-difficulty mode
-        const breakdown = {};
-        Object.entries(selectedDifficulties).forEach(([difficulty, isSelected]) => {
-          if (isSelected && difficultyQuestions[difficulty] > 0) {
-            breakdown[difficulty] = parseInt(difficultyQuestions[difficulty]);
-          }
-        });
-        console.log('Sending difficulty breakdown:', breakdown);
-        data.append('difficultyBreakdown', JSON.stringify(breakdown));
-        data.append('numQuestions', totalQuestions);
-      } else {
-        // Single difficulty mode (backward compatibility)
-        data.append('numQuestions', formData.numQuestions);
-        data.append('difficulty', formData.difficulty);
+      // Send CodeDragDrop questions
+      if (codeDragDropQuestions.length > 0) {
+        data.append('codeDragDropQuestions', JSON.stringify(codeDragDropQuestions));
+      }
+      
+      // Handle multi-difficulty or single difficulty (only for AI-generated quizzes)
+      if (!isOnlyCodeDragDrop) {
+        if (hasSelectedDifficulty && totalQuestions > 0) {
+          // Multi-difficulty mode
+          const breakdown = {};
+          Object.entries(selectedDifficulties).forEach(([difficulty, isSelected]) => {
+            if (isSelected && difficultyQuestions[difficulty] > 0) {
+              breakdown[difficulty] = parseInt(difficultyQuestions[difficulty]);
+            }
+          });
+          console.log('Sending difficulty breakdown:', breakdown);
+          data.append('difficultyBreakdown', JSON.stringify(breakdown));
+          data.append('numQuestions', totalQuestions);
+        } else {
+          // Single difficulty mode (backward compatibility)
+          data.append('numQuestions', formData.numQuestions);
+          data.append('difficulty', formData.difficulty);
+        }
       }
       
       if (pdfFile) {
         data.append('pdfFile', pdfFile);
       }
 
+      console.log('Submitting quiz with data:', {
+        title: formData.title,
+        selectedTypes: Object.entries(selectedQuestionTypes).filter(([_, v]) => v).map(([k]) => k),
+        codeDragDropCount: codeDragDropQuestions.length,
+        isOnlyCodeDragDrop
+      });
+
       const response = await quizAPI.createQuiz(data);
       showToast(`Quiz created successfully! Code: ${response.data.quiz.quizCode}`, 'success');
       
-      // Reset form
+      // Reset form only on success
       setFormData({
         title: '',
         description: '',
@@ -279,13 +314,15 @@ function CreateQuiz({ onQuizCreated }) {
       setPastedText('');
       setContentSource('');
       setTextType('article');
+      setArticleType('regular');
       setShowCodeReference(false);
       setCodeLanguage('javascript');
       setSelectedQuizIds([]);
       setSelectedBankQuestions([]);
       setSelectedDifficulties({ Easy: false, Medium: false, Hard: false });
       setDifficultyQuestions({ Easy: 0, Medium: 0, Hard: 0 });
-      setSelectedQuestionTypes({ MCQ: false, TrueFalse: false, FillInBlank: false, CodeSnippet: false, Essay: false });
+      setSelectedQuestionTypes({ MCQ: false, TrueFalse: false, FillInBlank: false, CodeSnippet: false, Essay: false, CodeDragDrop: false });
+      setCodeDragDropQuestions([]);
       setEssayGradingMode('afterSubmission');
       setEssayGradingLevel('intermediate');
       setError('');
@@ -294,6 +331,8 @@ function CreateQuiz({ onQuizCreated }) {
       // Call immediately to refresh quiz list
       onQuizCreated();
     } catch (err) {
+      console.error('Quiz creation error:', err);
+      console.error('Error response:', err.response?.data);
       const errorMsg = err.response?.data?.message || 'Failed to create quiz';
       showToast(errorMsg, 'error');
       setError(errorMsg);
@@ -304,6 +343,14 @@ function CreateQuiz({ onQuizCreated }) {
       setLoading(false);
     }
   };
+
+  // Check if only CodeDragDrop is selected (no other question types)
+  const isOnlyCodeDragDrop = selectedQuestionTypes.CodeDragDrop && 
+    !selectedQuestionTypes.MCQ && 
+    !selectedQuestionTypes.TrueFalse && 
+    !selectedQuestionTypes.FillInBlank && 
+    !selectedQuestionTypes.CodeSnippet && 
+    !selectedQuestionTypes.Essay;
 
   return (
     <div style={{ border: '2px solid #667eea', borderRadius: '12px', padding: '20px', marginBottom: '20px', background: '#f7fafc' }}>
@@ -403,27 +450,35 @@ function CreateQuiz({ onQuizCreated }) {
               { value: 'TrueFalse', label: 'True or False', icon: '✓✗', desc: 'Evaluate statements as true or false' },
               { value: 'FillInBlank', label: 'Fill in the Blank', icon: '📝', desc: 'Complete sentences with correct answers' },
               { value: 'CodeSnippet', label: 'Code Questions', icon: '💻', desc: 'Questions with code syntax highlighting' },
-              { value: 'Essay', label: 'Essay/Short Answer', icon: '📄', desc: 'Written responses graded by AI' }
+              { value: 'Essay', label: 'Essay/Short Answer', icon: '📄', desc: 'Written responses graded by AI' },
+              { value: 'CodeDragDrop', label: 'Code Drag & Drop', icon: '🧩', desc: 'Drag correct code into blanks' }
             ].map((type) => (
               <div
                 key={type.value}
-                onClick={() => setSelectedQuestionTypes({ ...selectedQuestionTypes, [type.value]: !selectedQuestionTypes[type.value] })}
+                onClick={() => !type.disabled && setSelectedQuestionTypes({ ...selectedQuestionTypes, [type.value]: !selectedQuestionTypes[type.value] })}
                 style={{
                   padding: '16px',
                   border: `2px solid ${selectedQuestionTypes[type.value] ? '#667eea' : '#e2e8f0'}`,
                   borderRadius: '8px',
                   backgroundColor: selectedQuestionTypes[type.value] ? '#eef2ff' : 'white',
-                  cursor: 'pointer',
+                  cursor: type.disabled ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
-                  position: 'relative'
+                  position: 'relative',
+                  opacity: type.disabled ? 0.5 : 1
                 }}
               >
+                {type.disabled && (
+                  <div style={{ position: 'absolute', top: '8px', right: '8px', backgroundColor: '#fbbf24', color: '#92400e', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '600' }}>
+                    Manual Only
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                   <input
                     type="checkbox"
                     checked={selectedQuestionTypes[type.value]}
                     onChange={() => {}}
-                    style={{ marginRight: '8px', width: '18px', height: '18px', cursor: 'pointer' }}
+                    disabled={type.disabled}
+                    style={{ marginRight: '8px', width: '18px', height: '18px', cursor: type.disabled ? 'not-allowed' : 'pointer' }}
                     onClick={(e) => e.stopPropagation()}
                   />
                   <span style={{ fontSize: '18px', marginRight: '8px' }}>{type.icon}</span>
@@ -567,6 +622,14 @@ function CreateQuiz({ onQuizCreated }) {
             </div>
           </div>
         )}
+        
+        {/* CodeDragDrop Form - Show only when CodeDragDrop is selected */}
+        {selectedQuestionTypes.CodeDragDrop && (
+          <CodeDragDropForm
+            questions={codeDragDropQuestions}
+            onQuestionsChange={setCodeDragDropQuestions}
+          />
+        )}
         </>
         )}
 
@@ -603,7 +666,7 @@ function CreateQuiz({ onQuizCreated }) {
         )}
 
         {/* Pasted Text Field */}
-        {contentSource === 'text' && (
+        {contentSource === 'text' && !isOnlyCodeDragDrop && (
         <div className="form-group">
           <label>📝 Paste Text/Code Content *</label>
           
@@ -651,6 +714,57 @@ function CreateQuiz({ onQuizCreated }) {
               </div>
             </div>
           </div>
+
+          {/* Article Type Selection */}
+          {textType === 'article' && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '13px', color: '#4a5568' }}>
+                Article Type
+              </label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <div
+                  onClick={() => setArticleType('regular')}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    border: `2px solid ${articleType === 'regular' ? '#667eea' : '#e2e8f0'}`,
+                    borderRadius: '8px',
+                    backgroundColor: articleType === 'regular' ? '#eef2ff' : 'white',
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ fontSize: '18px', marginBottom: '4px' }}>📝</div>
+                  <div style={{ fontWeight: '600', fontSize: '12px', color: '#2d3748' }}>Regular Text</div>
+                  <div style={{ fontSize: '10px', color: '#718096', marginTop: '2px' }}>Articles, notes, etc.</div>
+                </div>
+                
+                <div
+                  onClick={() => setArticleType('transcript')}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    border: `2px solid ${articleType === 'transcript' ? '#667eea' : '#e2e8f0'}`,
+                    borderRadius: '8px',
+                    backgroundColor: articleType === 'transcript' ? '#eef2ff' : 'white',
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ fontSize: '18px', marginBottom: '4px' }}>🎙️</div>
+                  <div style={{ fontWeight: '600', fontSize: '12px', color: '#2d3748' }}>Transcript</div>
+                  <div style={{ fontSize: '10px', color: '#718096', marginTop: '2px' }}>Video/audio transcripts</div>
+                </div>
+              </div>
+              {articleType === 'transcript' && (
+                <small style={{ display: 'block', marginTop: '8px', padding: '8px', backgroundColor: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '6px', fontSize: '11px', color: '#92400e' }}>
+                  💡 Transcripts will be automatically cleaned (timestamps removed), summarized, and questions will be generated from the summary.
+                </small>
+              )}
+            </div>
+          )}
 
           {/* Code-specific options */}
           {textType === 'code' && (
@@ -722,7 +836,13 @@ function CreateQuiz({ onQuizCreated }) {
           <textarea
             value={pastedText}
             onChange={(e) => setPastedText(e.target.value)}
-            placeholder={textType === 'code' ? "Paste your source code here..." : "Paste your text content or article here..."}
+            placeholder={
+              textType === 'code' 
+                ? "Paste your source code here..." 
+                : articleType === 'transcript'
+                  ? "Paste your video/audio transcript here (with or without timestamps)..."
+                  : "Paste your text content or article here..."
+            }
             rows="10"
             required
             style={{
@@ -739,7 +859,9 @@ function CreateQuiz({ onQuizCreated }) {
           <small style={{ color: '#718096', fontSize: '12px', marginTop: '4px', display: 'block' }}>
             {textType === 'code' 
               ? 'Paste source code. AI will generate questions to test understanding of this code.'
-              : 'Paste any text content, articles, or notes. AI will analyze it to generate quiz questions.'}
+              : articleType === 'transcript'
+                ? 'Paste transcript content. Timestamps will be automatically removed, text will be summarized, and questions generated from the summary.'
+                : 'Paste any text content, articles, or notes. AI will analyze it to generate quiz questions.'}
           </small>
           {pastedText.trim() && (
             <small style={{ color: '#155724', fontSize: '12px', marginTop: '4px', display: 'block' }}>
@@ -786,6 +908,7 @@ function CreateQuiz({ onQuizCreated }) {
         </div>
 
         {/* Multi-Difficulty Selection */}
+        {!isOnlyCodeDragDrop && (
         <div className="form-group">
           <label style={{ marginBottom: '12px', display: 'block', fontWeight: '600', fontSize: '14px', color: '#4a5568' }}>
             📊 Question Difficulty Distribution *
@@ -860,6 +983,7 @@ function CreateQuiz({ onQuizCreated }) {
             </div>
           )}
         </div>
+        )}
 
         <div className="form-group">
           <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '14px' }}>

@@ -56,6 +56,7 @@ export const quizAPI = {
   duplicateQuiz: (quizId, data) => api.post(`/quiz/${quizId}/duplicate`, data),
   getAllQuestions: () => api.get('/quiz/all-questions'),
   getQuestionBank: (params) => api.get(`/quiz/question-bank${params ? '?' + params : ''}`),
+  generateCodeDistractors: (data) => api.post('/quiz/generate-code-distractors', data),
 };
 
 export const submissionAPI = {
