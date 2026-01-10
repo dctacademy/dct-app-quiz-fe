@@ -23,9 +23,6 @@ function CreateQuiz({ onQuizCreated }) {
   const [pdfFile, setPdfFile] = useState(null);
   const [pastedText, setPastedText] = useState('');
   const [contentSource, setContentSource] = useState(''); // 'pdf', 'url', 'text', 'questionBank', 'copyQuiz'
-  const [textType, setTextType] = useState('article'); // 'article' or 'code'
-  const [showCodeReference, setShowCodeReference] = useState(false);
-  const [codeLanguage, setCodeLanguage] = useState('javascript');
   const [availableQuizzes, setAvailableQuizzes] = useState([]);
   const [selectedQuizIds, setSelectedQuizIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -219,14 +216,7 @@ function CreateQuiz({ onQuizCreated }) {
       }
       
       if (formData.contentUrl) data.append('contentUrl', formData.contentUrl);
-      if (pastedText.trim()) {
-        data.append('pastedText', pastedText.trim());
-        data.append('textType', textType);
-        if (textType === 'code') {
-          data.append('showCodeReference', showCodeReference);
-          data.append('codeLanguage', codeLanguage);
-        }
-      }
+      if (pastedText.trim()) data.append('pastedText', pastedText.trim());
       if (formData.startDate) data.append('startDate', formData.startDate);
       if (formData.endDate) data.append('endDate', formData.endDate);
       if (selectedQuizIds.length > 0) {
@@ -277,10 +267,6 @@ function CreateQuiz({ onQuizCreated }) {
       });
       setPdfFile(null);
       setPastedText('');
-      setContentSource('');
-      setTextType('article');
-      setShowCodeReference(false);
-      setCodeLanguage('javascript');
       setSelectedQuizIds([]);
       setSelectedBankQuestions([]);
       setSelectedDifficulties({ Easy: false, Medium: false, Hard: false });
@@ -606,123 +592,10 @@ function CreateQuiz({ onQuizCreated }) {
         {contentSource === 'text' && (
         <div className="form-group">
           <label>📝 Paste Text/Code Content *</label>
-          
-          {/* Content Type Selector */}
-          <div style={{ marginBottom: '12px', marginTop: '8px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', fontSize: '13px', color: '#4a5568' }}>
-              Content Type
-            </label>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div
-                onClick={() => {
-                  setTextType('article');
-                  setShowCodeReference(false);
-                }}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  border: `2px solid ${textType === 'article' ? '#667eea' : '#e2e8f0'}`,
-                  borderRadius: '8px',
-                  backgroundColor: textType === 'article' ? '#eef2ff' : 'white',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ fontSize: '20px', marginBottom: '4px' }}>📄</div>
-                <div style={{ fontWeight: '600', fontSize: '13px', color: '#2d3748' }}>Text/Article</div>
-              </div>
-              
-              <div
-                onClick={() => setTextType('code')}
-                style={{
-                  flex: 1,
-                  padding: '10px 16px',
-                  border: `2px solid ${textType === 'code' ? '#667eea' : '#e2e8f0'}`,
-                  borderRadius: '8px',
-                  backgroundColor: textType === 'code' ? '#eef2ff' : 'white',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ fontSize: '20px', marginBottom: '4px' }}>💻</div>
-                <div style={{ fontWeight: '600', fontSize: '13px', color: '#2d3748' }}>Source Code</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Code-specific options */}
-          {textType === 'code' && (
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '13px', color: '#4a5568' }}>
-                    Programming Language
-                  </label>
-                  <select
-                    value={codeLanguage}
-                    onChange={(e) => setCodeLanguage(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1.5px solid #e2e8f0',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      background: 'white'
-                    }}
-                  >
-                    <option value="javascript">JavaScript</option>
-                    <option value="python">Python</option>
-                    <option value="java">Java</option>
-                    <option value="cpp">C++</option>
-                    <option value="csharp">C#</option>
-                    <option value="typescript">TypeScript</option>
-                    <option value="go">Go</option>
-                    <option value="rust">Rust</option>
-                    <option value="php">PHP</option>
-                    <option value="ruby">Ruby</option>
-                    <option value="swift">Swift</option>
-                    <option value="kotlin">Kotlin</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div
-                onClick={() => setShowCodeReference(!showCodeReference)}
-                style={{
-                  padding: '12px',
-                  border: '1.5px solid #e2e8f0',
-                  borderRadius: '8px',
-                  backgroundColor: '#fafafa',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={showCodeReference}
-                  onChange={() => {}}
-                  style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                />
-                <div>
-                  <div style={{ fontWeight: '600', fontSize: '13px', color: '#2d3748' }}>
-                    Show code to students as reference
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#718096', marginTop: '2px' }}>
-                    Students can view the code while taking the quiz
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <textarea
             value={pastedText}
             onChange={(e) => setPastedText(e.target.value)}
-            placeholder={textType === 'code' ? "Paste your source code here..." : "Paste your text content or article here..."}
+            placeholder="Paste your text content or source code here for AI to generate questions from..."
             rows="10"
             required
             style={{
@@ -737,9 +610,7 @@ function CreateQuiz({ onQuizCreated }) {
             }}
           />
           <small style={{ color: '#718096', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-            {textType === 'code' 
-              ? 'Paste source code. AI will generate questions to test understanding of this code.'
-              : 'Paste any text content, articles, or notes. AI will analyze it to generate quiz questions.'}
+            Paste any text content, articles, notes, or source code. AI will analyze it to generate quiz questions.
           </small>
           {pastedText.trim() && (
             <small style={{ color: '#155724', fontSize: '12px', marginTop: '4px', display: 'block' }}>
@@ -911,8 +782,6 @@ function CreateQuiz({ onQuizCreated }) {
             </small>
           </div>
         </div>
-        </>
-        )}
 
         {/* Copy Quiz Section */}
         {contentSource === 'copyQuiz' && availableQuizzes.length > 0 && (
@@ -1231,12 +1100,59 @@ function CreateQuiz({ onQuizCreated }) {
             </div>
           )}
         </div>
-        )}
+
+        <div className="form-group">
+          <label>� Or Paste Text/Code Content {selectedQuizIds.length === 0 && !formData.contentUrl && !pdfFile ? '*' : '(Optional)'}</label>
+          <textarea
+            value={pastedText}
+            onChange={(e) => setPastedText(e.target.value)}
+            placeholder="Paste your text content or source code here for AI to generate questions from..."
+            rows="8"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontFamily: 'monospace',
+              background: '#fafafa',
+              resize: 'vertical'
+            }}
+          />
+          <small style={{ color: '#718096', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+            Paste any text content, articles, notes, or source code. AI will analyze it to generate quiz questions.
+          </small>
+          {pastedText.trim() && (
+            <small style={{ color: '#155724', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+              ✓ {pastedText.length} characters pasted ({Math.ceil(pastedText.length / 1000)}KB)
+            </small>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label>📄 Upload PDF File {selectedQuizIds.length === 0 && !formData.contentUrl && !pastedText.trim() ? '*' : '(Optional)'}</label>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileChange}
+            required={selectedQuizIds.length === 0 && !formData.contentUrl && !pastedText.trim()}
+          />
+          {pdfFile && (
+            <p style={{ marginTop: '8px', color: '#155724' }}>
+              Selected: {pdfFile.name}
+            </p>
+          )}
+          {(selectedQuizIds.length > 0 || formData.contentUrl || pastedText.trim()) && (
+            <small style={{ color: '#718096', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+              PDF is optional when using a URL, pasted text, or copying from existing quizzes
+            </small>
+          )}
+        </div>
 
         <button 
           type="submit" 
           className="btn btn-primary"
-          disabled={loading || !contentSource}
+          disabled={loading}
         >
           {loading ? 'Creating Quiz... (This may take a minute)' : 'Create Quiz'}
         </button>

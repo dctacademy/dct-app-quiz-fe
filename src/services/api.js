@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'https://dct-app-quiz.onrender.com/api';
+const API_URL = 'http://localhost:3040/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -55,6 +55,7 @@ export const quizAPI = {
   getOverallLeaderboard: () => api.get('/quiz/leaderboard/overall'),
   duplicateQuiz: (quizId, data) => api.post(`/quiz/${quizId}/duplicate`, data),
   getAllQuestions: () => api.get('/quiz/all-questions'),
+  getQuestionBank: (params) => api.get(`/quiz/question-bank${params ? '?' + params : ''}`),
 };
 
 export const submissionAPI = {

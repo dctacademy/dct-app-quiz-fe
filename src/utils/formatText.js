@@ -1,6 +1,6 @@
 /**
  * Formats text to render code snippets properly
- * Supports both inline code (`code`) and code blocks (```code```)
+ * Supports both inline code (`code`) and code blocks (```language\ncode```)
  */
 export const formatTextWithCode = (text) => {
   if (!text) return text;
@@ -8,8 +8,8 @@ export const formatTextWithCode = (text) => {
   // Convert to string if not already
   const textStr = String(text);
 
-  // Split by code blocks first (```code```)
-  const codeBlockRegex = /```([^`]+)```/g;
+  // Split by code blocks first (```lang\ncode``` or ```code```)
+  const codeBlockRegex = /```(\w+)?\n?([^`]+)```/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -23,10 +23,11 @@ export const formatTextWithCode = (text) => {
       });
     }
     
-    // Add code block
+    // Add code block with language
     parts.push({
       type: 'codeBlock',
-      content: match[1]
+      language: match[1] || 'plaintext',
+      content: match[2] || match[1] // If no language specified, use match[1] as content
     });
     
     lastIndex = match.index + match[0].length;
@@ -103,29 +104,69 @@ export const formatTextWithCode = (text) => {
 export const FormattedText = ({ text, style = {} }) => {
   const parts = formatTextWithCode(text);
 
+  // Language display names and colors
+  const languageInfo = {
+    javascript: { name: 'JavaScript', color: '#f7df1e', bg: '#2d3748' },
+    python: { name: 'Python', color: '#3776ab', bg: '#1e1e1e' },
+    java: { name: 'Java', color: '#007396', bg: '#2d3748' },
+    cpp: { name: 'C++', color: '#00599c', bg: '#2d3748' },
+    c: { name: 'C', color: '#a8b9cc', bg: '#2d3748' },
+    html: { name: 'HTML', color: '#e34c26', bg: '#2d3748' },
+    css: { name: 'CSS', color: '#264de4', bg: '#2d3748' },
+    sql: { name: 'SQL', color: '#00758f', bg: '#2d3748' },
+    plaintext: { name: 'Code', color: '#a0aec0', bg: '#2d3748' }
+  };
+
   return (
     <span style={style}>
       {parts.map((part, index) => {
         if (part.type === 'codeBlock') {
+          const lang = part.language || 'plaintext';
+          const info = languageInfo[lang.toLowerCase()] || languageInfo.plaintext;
+          
           return (
-            <pre
+            <div
               key={index}
               style={{
-                backgroundColor: '#2d3748',
-                color: '#f7fafc',
-                padding: '12px',
-                borderRadius: '6px',
-                overflow: 'auto',
-                fontSize: '13px',
-                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                margin: '8px 0',
-                lineHeight: '1.5',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word'
+                margin: '12px 0',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                border: '1px solid #4a5568'
               }}
             >
-              <code>{part.content}</code>
-            </pre>
+              {/* Language label */}
+              <div
+                style={{
+                  backgroundColor: '#1a202c',
+                  color: info.color,
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  borderBottom: '1px solid #4a5568'
+                }}
+              >
+                {info.name}
+              </div>
+              {/* Code content */}
+              <pre
+                style={{
+                  backgroundColor: info.bg,
+                  color: '#f7fafc',
+                  padding: '16px',
+                  margin: 0,
+                  overflow: 'auto',
+                  fontSize: '13px',
+                  fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}
+              >
+                <code>{part.content.trim()}</code>
+              </pre>
+            </div>
           );
         } else if (part.type === 'inlineCode') {
           return (

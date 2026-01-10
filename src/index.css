@@ -12,7 +12,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
-  font-size: 14px;
+  font-size: 15px;
   color: #2d3748;
   line-height: 1.6;
 }
@@ -20,7 +20,7 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .container {
@@ -48,7 +48,7 @@ code {
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   transition: all 0.2s ease;
   letter-spacing: 0.3px;
@@ -102,7 +102,7 @@ code {
   margin-bottom: 6px;
   font-weight: 600;
   color: #2d3748;
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0.3px;
 }
 
@@ -113,7 +113,7 @@ code {
   padding: 10px 12px;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 15px;
   transition: all 0.2s ease;
   font-family: inherit;
   background: #fafafa;
@@ -134,7 +134,7 @@ code {
   padding: 10px 14px;
   border-radius: 8px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
   border-left: 3px solid #f56565;
 }
 
@@ -144,7 +144,7 @@ code {
   padding: 10px 14px;
   border-radius: 8px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: 14px;
   border-left: 3px solid #48bb78;
 }
 
@@ -152,7 +152,7 @@ code {
   text-align: center;
   padding: 32px;
   color: white;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .navbar {
@@ -174,7 +174,7 @@ code {
 
 .navbar h1 {
   color: #667eea;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.5px;
 }
@@ -188,14 +188,14 @@ code {
 .navbar-actions span {
   color: #4a5568;
   font-weight: 500;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .nav-link {
   color: #4a5568;
   text-decoration: none;
   font-weight: 500;
-  font-size: 14px;
+  font-size: 15px;
   padding: 8px 16px;
   border-radius: 6px;
   transition: all 0.2s ease;

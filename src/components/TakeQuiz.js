@@ -26,10 +26,12 @@ function TakeQuiz({ quiz, onComplete }) {
   
   const [currentQuestion, setCurrentQuestion] = useState(initialState?.currentQuestion || 0);
   const [answers, setAnswers] = useState(initialState?.answers || {});
+  const [hintsUnlocked, setHintsUnlocked] = useState(initialState?.hintsUnlocked || {});
   const [timeLeft, setTimeLeft] = useState(initialState?.timeLeft || quiz.duration * 60);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [shuffledOptions, setShuffledOptions] = useState(initialState?.shuffledOptions || {});
 
   // Shuffle options for all questions on component mount
@@ -62,12 +64,13 @@ function TakeQuiz({ quiz, onComplete }) {
         quizId: quiz._id,
         currentQuestion,
         answers,
+        hintsUnlocked,
         timeLeft,
         shuffledOptions
       };
       localStorage.setItem(storageKey, JSON.stringify(progressData));
     }
-  }, [currentQuestion, answers, timeLeft, shuffledOptions, submitted, quiz._id, storageKey]);
+  }, [currentQuestion, answers, hintsUnlocked, timeLeft, shuffledOptions, submitted, quiz._id, storageKey]);
 
   useEffect(() => {
     if (submitted) return;
@@ -86,19 +89,34 @@ function TakeQuiz({ quiz, onComplete }) {
     return () => clearInterval(timer);
   }, [submitted]);
 
-  const handleAnswerSelect = (questionId, originalIndex) => {
+  const handleAnswerSelect = (questionId, answer) => {
+    // answer can be: originalIndex for MCQ/TrueFalse, or string for FillInBlank/Essay
     setAnswers({
       ...answers,
-      [questionId]: originalIndex, // Store the original index
+      [questionId]: answer,
     });
   };
 
+  const unlockHint = (questionId, hintIndex) => {
+    const currentHints = hintsUnlocked[questionId] || [];
+    if (!currentHints.includes(hintIndex)) {
+      setHintsUnlocked({
+        ...hintsUnlocked,
+        [questionId]: [...currentHints, hintIndex]
+      });
+    }
+  };
+
   const handleSubmit = async () => {
+    if (submitting) return; // Prevent double submission
+    
     setLoading(true);
+    setSubmitting(true);
 
     const formattedAnswers = Object.keys(answers).map((questionId) => ({
       questionId,
       selectedAnswer: answers[questionId],
+      hintsUsed: hintsUnlocked[questionId] || []
     }));
 
     try {
@@ -111,7 +129,13 @@ function TakeQuiz({ quiz, onComplete }) {
       // Clear saved progress after successful submission
       localStorage.removeItem(storageKey);
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to submit quiz');
+      console.error('Error submitting quiz:', error);
+      const errorMessage = error.response?.data?.error || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to submit quiz';
+      alert(`Error submitting quiz: ${errorMessage}`);
+      setSubmitting(false); // Re-enable only on error
     } finally {
       setLoading(false);
     }
@@ -210,55 +234,165 @@ function TakeQuiz({ quiz, onComplete }) {
                   </div>
 
                   <div style={{ marginLeft: '26px' }}>
-                    {item.options.map((option, optIndex) => (
-                      <div 
-                        key={optIndex}
-                        style={{ 
-                          margin: '6px 0',
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                          backgroundColor: 
-                            optIndex === item.correctAnswer ? '#c6f6d5' :
-                            optIndex === item.selectedAnswer && !item.isCorrect ? '#fed7d7' :
-                            '#f7fafc',
-                          border: optIndex === item.correctAnswer || (optIndex === item.selectedAnswer && !item.isCorrect) ? 
-                            `1.5px solid ${optIndex === item.correctAnswer ? '#48bb78' : '#f56565'}` : '1px solid #e2e8f0',
-                          color: 
-                            optIndex === item.correctAnswer ? '#2f855a' :
-                            optIndex === item.selectedAnswer && !item.isCorrect ? '#c53030' :
-                            '#4a5568',
-                          fontWeight: 
-                            optIndex === item.correctAnswer || optIndex === item.selectedAnswer ? 
-                            '600' : '500'
-                        }}
-                      >
-                        <span style={{ fontWeight: '700', marginRight: '6px' }}>{String.fromCharCode(65 + optIndex)}.</span>
-                        <FormattedText text={option} />
-                        {optIndex === item.correctAnswer && <span style={{ marginLeft: '8px', fontSize: '14px' }}>✓</span>}
-                        {optIndex === item.selectedAnswer && !item.isCorrect && <span style={{ marginLeft: '8px', fontSize: '12px' }}>(your answer)</span>}
-                      </div>
-                    ))}
-
-                    {!item.isCorrect && (
-                      <div style={{ 
-                        marginTop: '12px',
-                        padding: '12px',
-                        backgroundColor: '#fefcbf',
-                        borderLeft: '3px solid #d69e2e',
-                        borderRadius: '6px'
-                      }}>
-                        <p style={{ 
-                          fontWeight: '600', 
-                          marginBottom: '4px',
-                          color: '#744210',
-                          fontSize: '12px'
+                    {/* Show essay grading details if available */}
+                    {item.essayGrading ? (
+                      <div>
+                        <div style={{ 
+                          marginBottom: '12px',
+                          padding: '12px',
+                          backgroundColor: '#f7fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px'
                         }}>
-                          💡 Explanation
-                        </p>
-                        <p style={{ margin: 0, color: '#744210', lineHeight: '1.6', fontSize: '13px' }}>
-                          <FormattedText text={item.explanation} />
-                        </p>
+                          <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#718096', fontWeight: '600' }}>
+                            Your Answer:
+                          </p>
+                          <p style={{ margin: 0, fontSize: '13px', color: '#2d3748', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                            {item.selectedAnswer || '[No answer provided]'}
+                          </p>
+                        </div>
+
+                        <div style={{ 
+                          padding: '14px',
+                          backgroundColor: item.isCorrect ? '#f0fff4' : '#fff5f5',
+                          border: `2px solid ${item.isCorrect ? '#48bb78' : '#f56565'}`,
+                          borderRadius: '8px',
+                          marginBottom: '12px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: '600', color: '#2d3748' }}>
+                              🤖 AI Grading Result
+                            </span>
+                            <span style={{ 
+                              fontSize: '18px', 
+                              fontWeight: '700',
+                              color: item.isCorrect ? '#2f855a' : '#c53030'
+                            }}>
+                              {item.essayGrading.score}/10
+                            </span>
+                          </div>
+                          
+                          <p style={{ margin: '8px 0', fontSize: '13px', color: '#2d3748', lineHeight: '1.6' }}>
+                            <strong>Feedback:</strong> {item.essayGrading.feedback}
+                          </p>
+                          
+                          {item.essayGrading.strengths && (
+                            <p style={{ margin: '8px 0', fontSize: '12px', color: '#2f855a', lineHeight: '1.5' }}>
+                              <strong>✓ Strengths:</strong> {item.essayGrading.strengths}
+                            </p>
+                          )}
+                          
+                          {item.essayGrading.improvements && (
+                            <p style={{ margin: '8px 0', fontSize: '12px', color: '#c53030', lineHeight: '1.5' }}>
+                              <strong>→ Improvements:</strong> {item.essayGrading.improvements}
+                            </p>
+                          )}
+                        </div>
+
+                        <div style={{ 
+                          marginTop: '12px',
+                          padding: '12px',
+                          backgroundColor: '#edf2f7',
+                          borderLeft: '3px solid #4299e1',
+                          borderRadius: '6px'
+                        }}>
+                          <p style={{ 
+                            fontWeight: '600', 
+                            marginBottom: '4px',
+                            color: '#2c5282',
+                            fontSize: '12px'
+                          }}>
+                            📚 Expected Key Points
+                          </p>
+                          <p style={{ margin: 0, color: '#2c5282', lineHeight: '1.6', fontSize: '13px' }}>
+                            <FormattedText text={item.explanation} />
+                          </p>
+                        </div>
+                      </div>
+                    ) : item.options && item.options.length > 0 ? (
+                      /* Show MCQ/TrueFalse/CodeSnippet options */
+                      <>
+                        {item.options.map((option, optIndex) => (
+                          <div 
+                            key={optIndex}
+                            style={{ 
+                              margin: '6px 0',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              backgroundColor: 
+                                optIndex === item.correctAnswer ? '#c6f6d5' :
+                                optIndex === item.selectedAnswer && !item.isCorrect ? '#fed7d7' :
+                                '#f7fafc',
+                              border: optIndex === item.correctAnswer || (optIndex === item.selectedAnswer && !item.isCorrect) ? 
+                                `1.5px solid ${optIndex === item.correctAnswer ? '#48bb78' : '#f56565'}` : '1px solid #e2e8f0',
+                              color: 
+                                optIndex === item.correctAnswer ? '#2f855a' :
+                                optIndex === item.selectedAnswer && !item.isCorrect ? '#c53030' :
+                                '#4a5568',
+                              fontWeight: 
+                                optIndex === item.correctAnswer || optIndex === item.selectedAnswer ? 
+                                '600' : '500'
+                            }}
+                          >
+                            <span style={{ fontWeight: '700', marginRight: '6px' }}>{String.fromCharCode(65 + optIndex)}.</span>
+                            <FormattedText text={option} />
+                            {optIndex === item.correctAnswer && <span style={{ marginLeft: '8px', fontSize: '14px' }}>✓</span>}
+                            {optIndex === item.selectedAnswer && !item.isCorrect && <span style={{ marginLeft: '8px', fontSize: '12px' }}>(your answer)</span>}
+                          </div>
+                        ))}
+
+                        {!item.isCorrect && (
+                          <div style={{ 
+                            marginTop: '12px',
+                            padding: '12px',
+                            backgroundColor: '#fefcbf',
+                            borderLeft: '3px solid #d69e2e',
+                            borderRadius: '6px'
+                          }}>
+                            <p style={{ 
+                              fontWeight: '600', 
+                              marginBottom: '4px',
+                              color: '#744210',
+                              fontSize: '12px'
+                            }}>
+                              💡 Explanation
+                            </p>
+                            <p style={{ margin: 0, color: '#744210', lineHeight: '1.6', fontSize: '13px' }}>
+                              <FormattedText text={item.explanation} />
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      /* Show FillInBlank answer */
+                      <div>
+                        <div style={{ 
+                          marginBottom: '12px',
+                          padding: '10px 12px',
+                          backgroundColor: item.isCorrect ? '#c6f6d5' : '#fed7d7',
+                          border: `1.5px solid ${item.isCorrect ? '#48bb78' : '#f56565'}`,
+                          borderRadius: '6px'
+                        }}>
+                          <span style={{ fontSize: '12px', color: '#718096', fontWeight: '600' }}>Your Answer: </span>
+                          <span style={{ fontSize: '13px', color: '#2d3748', fontWeight: '600' }}>
+                            {item.selectedAnswer || '[No answer]'}
+                          </span>
+                        </div>
+                        {!item.isCorrect && (
+                          <div style={{ 
+                            marginBottom: '12px',
+                            padding: '10px 12px',
+                            backgroundColor: '#c6f6d5',
+                            border: '1.5px solid #48bb78',
+                            borderRadius: '6px'
+                          }}>
+                            <span style={{ fontSize: '12px', color: '#718096', fontWeight: '600' }}>Correct Answer: </span>
+                            <span style={{ fontSize: '13px', color: '#2f855a', fontWeight: '600' }}>
+                              {item.correctAnswer}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -320,48 +454,208 @@ function TakeQuiz({ quiz, onComplete }) {
           </p>
         </div>
 
+        {/* Code Reference Section */}
+        {quiz.codeReference && quiz.codeReference.showToStudents && quiz.codeReference.code && (
+          <div style={{ 
+            marginBottom: '24px',
+            padding: '16px',
+            backgroundColor: '#f7fafc',
+            border: '2px solid #e2e8f0',
+            borderRadius: '8px'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              marginBottom: '12px',
+              paddingBottom: '8px',
+              borderBottom: '1px solid #e2e8f0'
+            }}>
+              <span style={{ fontSize: '16px', marginRight: '8px' }}>💻</span>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#2d3748' }}>
+                Code Reference ({quiz.codeReference.language})
+              </h4>
+            </div>
+            <pre style={{ 
+              backgroundColor: '#1a202c',
+              color: '#e2e8f0',
+              padding: '16px',
+              borderRadius: '6px',
+              overflow: 'auto',
+              fontSize: '13px',
+              lineHeight: '1.6',
+              margin: 0,
+              fontFamily: 'Monaco, Consolas, "Courier New", monospace'
+            }}>
+              <code>{quiz.codeReference.code}</code>
+            </pre>
+          </div>
+        )}
+
         <div style={{ marginBottom: '24px' }}>
           <h3 style={{ marginBottom: '16px', fontSize: '16px', lineHeight: '1.6', color: '#2d3748', fontWeight: '600' }}>
             <FormattedText text={currentQ.question} />
           </h3>
 
-          <div style={{ display: 'grid', gap: '10px' }}>
-            {currentShuffledOptions.map((item, displayIndex) => (
-              <button
-                key={displayIndex}
-                onClick={() => handleAnswerSelect(currentQ._id, item.originalIndex)}
+          {/* Render based on individual question type */}
+          {currentQ.questionType === 'FillInBlank' && (
+            <div>
+              <input
+                type="text"
+                value={answers[currentQ._id] || ''}
+                onChange={(e) => handleAnswerSelect(currentQ._id, e.target.value)}
+                placeholder="Type your answer here..."
                 style={{
+                  width: '100%',
                   padding: '12px 16px',
-                  border: `2px solid ${answers[currentQ._id] === item.originalIndex ? '#667eea' : '#e2e8f0'}`,
+                  border: '2px solid #e2e8f0',
                   borderRadius: '8px',
-                  backgroundColor: answers[currentQ._id] === item.originalIndex ? '#eef2ff' : 'white',
-                  cursor: 'pointer',
-                  textAlign: 'left',
                   fontSize: '14px',
-                  transition: 'all 0.2s ease',
                   fontWeight: '500',
                   color: '#2d3748'
                 }}
-                onMouseEnter={(e) => {
-                  if (answers[currentQ._id] !== item.originalIndex) {
-                    e.currentTarget.style.borderColor = '#667eea';
-                    e.currentTarget.style.backgroundColor = '#fafafa';
-                  }
+              />
+              <small style={{ display: 'block', marginTop: '8px', color: '#718096', fontSize: '12px' }}>
+                Enter your answer above (case-insensitive)
+              </small>
+            </div>
+          )}
+
+          {currentQ.questionType === 'Essay' && (
+            <div>
+              {/* Hints Section */}
+              {currentQ.hints && currentQ.hints.length > 0 && (
+                <div style={{ 
+                  marginBottom: '16px',
+                  padding: '14px',
+                  backgroundColor: '#fffbeb',
+                  border: '1.5px solid #fbbf24',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '16px', marginRight: '6px' }}>💡</span>
+                    <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '600', color: '#92400e' }}>
+                      Hints Available ({currentQ.hints.length})
+                    </h4>
+                  </div>
+                  
+                  {currentQ.hints.map((hint, hintIndex) => {
+                    const isUnlocked = (hintsUnlocked[currentQ._id] || []).includes(hintIndex);
+                    
+                    return (
+                      <div key={hintIndex} style={{ marginBottom: hintIndex < currentQ.hints.length - 1 ? '8px' : '0' }}>
+                        {isUnlocked ? (
+                          <div style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#fef3c7',
+                            border: '1px solid #fbbf24',
+                            borderRadius: '6px'
+                          }}>
+                            <div style={{ fontSize: '11px', color: '#92400e', marginBottom: '4px', fontWeight: '600' }}>
+                              Hint {hintIndex + 1} (unlocked - {hint.pointPenalty} point penalty)
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#78350f', lineHeight: '1.5' }}>
+                              {hint.text}
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => unlockHint(currentQ._id, hintIndex)}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              backgroundColor: 'white',
+                              border: '1.5px dashed #fbbf24',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              color: '#92400e',
+                              fontWeight: '600',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#fef3c7';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'white';
+                            }}
+                          >
+                            🔓 Unlock Hint {hintIndex + 1} (costs {hint.pointPenalty} point{hint.pointPenalty > 1 ? 's' : ''})
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              
+              <textarea
+                value={answers[currentQ._id] || ''}
+                onChange={(e) => handleAnswerSelect(currentQ._id, e.target.value)}
+                onCopy={(e) => e.preventDefault()}
+                onCut={(e) => e.preventDefault()}
+                onPaste={(e) => e.preventDefault()}
+                placeholder="Write your answer here..."
+                rows="8"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  border: '2px solid #e2e8f0',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#2d3748',
+                  resize: 'vertical',
+                  fontFamily: 'inherit'
                 }}
-                onMouseLeave={(e) => {
-                  if (answers[currentQ._id] !== item.originalIndex) {
-                    e.currentTarget.style.borderColor = '#e2e8f0';
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }
-                }}
-              >
-                <span style={{ fontWeight: '700', marginRight: '8px', fontSize: '14px' }}>
-                  {String.fromCharCode(65 + displayIndex)}.
-                </span>
-                <FormattedText text={item.option} />
-              </button>
-            ))}
-          </div>
+              />
+              <small style={{ display: 'block', marginTop: '8px', color: '#718096', fontSize: '12px' }}>
+                {answers[currentQ._id] ? `${answers[currentQ._id].length} characters` : 'No answer yet'}
+              </small>
+              <small style={{ display: 'block', marginTop: '4px', color: '#e53e3e', fontSize: '11px', fontWeight: '500' }}>
+                ⚠️ Copy-paste is disabled for essay questions to ensure original work
+              </small>
+            </div>
+          )}
+
+          {(currentQ.questionType === 'MCQ' || currentQ.questionType === 'TrueFalse' || currentQ.questionType === 'CodeSnippet' || !currentQ.questionType) && (
+            <div style={{ display: 'grid', gap: '10px' }}>
+              {currentShuffledOptions.map((item, displayIndex) => (
+                <button
+                  key={displayIndex}
+                  onClick={() => handleAnswerSelect(currentQ._id, item.originalIndex)}
+                  style={{
+                    padding: '12px 16px',
+                    border: `2px solid ${answers[currentQ._id] === item.originalIndex ? '#667eea' : '#e2e8f0'}`,
+                    borderRadius: '8px',
+                    backgroundColor: answers[currentQ._id] === item.originalIndex ? '#eef2ff' : 'white',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontSize: '14px',
+                    transition: 'all 0.2s ease',
+                    fontWeight: '500',
+                    color: '#2d3748'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (answers[currentQ._id] !== item.originalIndex) {
+                      e.currentTarget.style.borderColor = '#667eea';
+                      e.currentTarget.style.backgroundColor = '#fafafa';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (answers[currentQ._id] !== item.originalIndex) {
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                      e.currentTarget.style.backgroundColor = 'white';
+                    }
+                  }}
+                >
+                  <span style={{ fontWeight: '700', marginRight: '8px', fontSize: '14px' }}>
+                    {String.fromCharCode(65 + displayIndex)}.
+                  </span>
+                  <FormattedText text={item.option} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
@@ -378,8 +672,14 @@ function TakeQuiz({ quiz, onComplete }) {
             <button
               className="btn btn-primary"
               onClick={handleSubmit}
-              disabled={loading || Object.keys(answers).length !== quiz.questions.length}
-              style={{ flex: 2, fontSize: '12px', padding: '10px' }}
+              disabled={submitting || loading || Object.keys(answers).length !== quiz.questions.length}
+              style={{ 
+                flex: 2, 
+                fontSize: '12px', 
+                padding: '10px',
+                opacity: submitting || loading || Object.keys(answers).length !== quiz.questions.length ? 0.6 : 1,
+                cursor: submitting || loading || Object.keys(answers).length !== quiz.questions.length ? 'not-allowed' : 'pointer'
+              }}
             >
               {loading ? '⏳ Submitting...' : '✓ Submit Quiz'}
             </button>
@@ -387,7 +687,6 @@ function TakeQuiz({ quiz, onComplete }) {
             <button
               className="btn btn-primary"
               onClick={() => setCurrentQuestion(currentQuestion + 1)}
-              disabled={!isAnswered}
               style={{ flex: 1, fontSize: '12px', padding: '10px' }}
             >
               Next →
