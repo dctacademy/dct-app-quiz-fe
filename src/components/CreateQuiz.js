@@ -4,6 +4,8 @@ import { quizAPI } from '../services/api';
 import { useToast } from './Toast';
 import { useAuth } from '../context/AuthContext';
 import CodeDragDropForm from './CodeDragDropForm';
+import { FormattedText } from '../utils/formatText';
+import CreatableSelect from 'react-select/creatable';
 
 function CreateQuiz({ onQuizCreated }) {
   const { user } = useAuth();
@@ -23,6 +25,7 @@ function CreateQuiz({ onQuizCreated }) {
   });
   const [pdfFile, setPdfFile] = useState(null);
   const [pastedText, setPastedText] = useState('');
+  const [keywords, setKeywords] = useState('');
   const [contentSource, setContentSource] = useState(''); // 'pdf', 'url', 'text', 'questionBank', 'copyQuiz'
   const [textType, setTextType] = useState('article'); // 'article' or 'code'
   const [articleType, setArticleType] = useState('regular'); // 'regular' or 'transcript'
@@ -54,7 +57,8 @@ function CreateQuiz({ onQuizCreated }) {
     FillInBlank: false,
     CodeSnippet: false,
     Essay: false,
-    CodeDragDrop: false
+    CodeDragDrop: false,
+    TrickyQuestion: false
   });
   
   // CodeDragDrop questions state
@@ -76,6 +80,10 @@ function CreateQuiz({ onQuizCreated }) {
   const [showQuestionBank, setShowQuestionBank] = useState(false);
   const [loadingBank, setLoadingBank] = useState(false);
   
+  // Tags state
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [availableTags, setAvailableTags] = useState([]);
+  
   // Fetch available quizzes on mount
   useEffect(() => {
     const fetchQuizzes = async () => {
@@ -87,8 +95,19 @@ function CreateQuiz({ onQuizCreated }) {
       }
     };
     
+    const fetchTags = async () => {
+      try {
+        const response = await quizAPI.getAllTags();
+        const tagOptions = response.data.map(tag => ({ value: tag, label: tag }));
+        setAvailableTags(tagOptions);
+      } catch (err) {
+        console.error('Error fetching tags:', err);
+      }
+    };
+    
     if (user && user.role === 'admin') {
       fetchQuizzes();
+      fetchTags();
     }
   }, [user]);
   
@@ -186,9 +205,9 @@ function CreateQuiz({ onQuizCreated }) {
         return;
       }
     } else {
-      // For other question types, we need content source
-      if (!pdfFile && !formData.contentUrl && !pastedText.trim() && selectedQuizIds.length === 0 && selectedBankQuestions.length === 0 && codeDragDropQuestions.length === 0) {
-        setError('Please provide a PDF file, URL, paste text/code, select existing quizzes, select questions from the question bank, or add CodeDragDrop questions');
+      // For other question types, we need content source OR keywords
+      if (!pdfFile && !formData.contentUrl && !pastedText.trim() && !keywords.trim() && selectedQuizIds.length === 0 && selectedBankQuestions.length === 0 && codeDragDropQuestions.length === 0) {
+        setError('Please provide a PDF file, URL, paste text/code, enter keywords, select existing quizzes, select questions from the question bank, or add CodeDragDrop questions');
         return;
       }
     }
@@ -200,14 +219,14 @@ function CreateQuiz({ onQuizCreated }) {
       .reduce((sum, [difficulty, _]) => sum + (difficultyQuestions[difficulty] || 0), 0);
     
     if (!isOnlyCodeDragDrop) {
-      if ((pdfFile || formData.contentUrl || pastedText.trim()) && hasSelectedDifficulty && totalQuestions === 0) {
+      if ((pdfFile || formData.contentUrl || pastedText.trim() || keywords.trim()) && hasSelectedDifficulty && totalQuestions === 0) {
         setError('Please specify number of questions for selected difficulty levels');
         return;
       }
       
       // Validate question type selection (only for AI-generated quizzes)
       const hasSelectedTypes = Object.values(selectedQuestionTypes).some(v => v);
-      if ((pdfFile || formData.contentUrl || pastedText.trim()) && !hasSelectedTypes) {
+      if ((pdfFile || formData.contentUrl || pastedText.trim() || keywords.trim()) && !hasSelectedTypes) {
         setError('Please select at least one question type');
         return;
       }
@@ -240,6 +259,9 @@ function CreateQuiz({ onQuizCreated }) {
       if (pastedText.trim()) {
         data.append('pastedText', pastedText.trim());
         data.append('textType', textType);
+        if (keywords.trim()) {
+          data.append('keywords', keywords.trim());
+        }
         if (textType === 'article') {
           data.append('articleType', articleType);
         }
@@ -262,6 +284,12 @@ function CreateQuiz({ onQuizCreated }) {
       // Send CodeDragDrop questions
       if (codeDragDropQuestions.length > 0) {
         data.append('codeDragDropQuestions', JSON.stringify(codeDragDropQuestions));
+      }
+      
+      // Send tags
+      if (selectedTags.length > 0) {
+        const tagValues = selectedTags.map(tag => tag.value);
+        data.append('tags', JSON.stringify(tagValues));
       }
       
       // Handle multi-difficulty or single difficulty (only for AI-generated quizzes)
@@ -312,6 +340,7 @@ function CreateQuiz({ onQuizCreated }) {
       });
       setPdfFile(null);
       setPastedText('');
+      setKeywords('');
       setContentSource('');
       setTextType('article');
       setArticleType('regular');
@@ -321,10 +350,11 @@ function CreateQuiz({ onQuizCreated }) {
       setSelectedBankQuestions([]);
       setSelectedDifficulties({ Easy: false, Medium: false, Hard: false });
       setDifficultyQuestions({ Easy: 0, Medium: 0, Hard: 0 });
-      setSelectedQuestionTypes({ MCQ: false, TrueFalse: false, FillInBlank: false, CodeSnippet: false, Essay: false, CodeDragDrop: false });
+      setSelectedQuestionTypes({ MCQ: false, TrueFalse: false, FillInBlank: false, CodeSnippet: false, Essay: false, CodeDragDrop: false, TrickyQuestion: false });
       setCodeDragDropQuestions([]);
       setEssayGradingMode('afterSubmission');
       setEssayGradingLevel('intermediate');
+      setSelectedTags([]);
       setError('');
       setSuccess('');
       
@@ -350,7 +380,8 @@ function CreateQuiz({ onQuizCreated }) {
     !selectedQuestionTypes.TrueFalse && 
     !selectedQuestionTypes.FillInBlank && 
     !selectedQuestionTypes.CodeSnippet && 
-    !selectedQuestionTypes.Essay;
+    !selectedQuestionTypes.Essay && 
+    !selectedQuestionTypes.TrickyQuestion;
 
   return (
     <div style={{ border: '2px solid #667eea', borderRadius: '12px', padding: '20px', marginBottom: '20px', background: '#f7fafc' }}>
@@ -372,13 +403,56 @@ function CreateQuiz({ onQuizCreated }) {
         </div>
 
         <div className="form-group">
-          <label>Description</label>
+          <label>Description *</label>
           <textarea
             name="description"
             value={formData.description}
             onChange={handleChange}
+            required
             rows="3"
             placeholder="Enter quiz description"
+          />
+        </div>
+
+        {/* Tags field */}
+        <div className="form-group">
+          <label style={{ marginBottom: '8px', display: 'block', fontWeight: '600', fontSize: '14px', color: '#4a5568' }}>
+            🏷️ Tags
+          </label>
+          <small style={{ color: '#718096', fontSize: '12px', marginBottom: '8px', display: 'block' }}>
+            Add tags to organize and categorize your quiz. You can select existing tags or create new ones.
+          </small>
+          <CreatableSelect
+            isMulti
+            value={selectedTags}
+            onChange={setSelectedTags}
+            options={availableTags}
+            placeholder="Select or create tags..."
+            styles={{
+              control: (base) => ({
+                ...base,
+                borderColor: '#e2e8f0',
+                '&:hover': { borderColor: '#cbd5e0' },
+                boxShadow: 'none',
+              }),
+              multiValue: (base) => ({
+                ...base,
+                backgroundColor: '#eef2ff',
+              }),
+              multiValueLabel: (base) => ({
+                ...base,
+                color: '#667eea',
+                fontWeight: '500',
+              }),
+              multiValueRemove: (base) => ({
+                ...base,
+                color: '#667eea',
+                '&:hover': {
+                  backgroundColor: '#667eea',
+                  color: 'white',
+                },
+              }),
+            }}
           />
         </div>
 
@@ -451,7 +525,8 @@ function CreateQuiz({ onQuizCreated }) {
               { value: 'FillInBlank', label: 'Fill in the Blank', icon: '📝', desc: 'Complete sentences with correct answers' },
               { value: 'CodeSnippet', label: 'Code Questions', icon: '💻', desc: 'Questions with code syntax highlighting' },
               { value: 'Essay', label: 'Essay/Short Answer', icon: '📄', desc: 'Written responses graded by AI' },
-              { value: 'CodeDragDrop', label: 'Code Drag & Drop', icon: '🧩', desc: 'Drag correct code into blanks' }
+              { value: 'CodeDragDrop', label: 'Code Drag & Drop', icon: '🧩', desc: 'Drag correct code into blanks' },
+              { value: 'TrickyQuestion', label: 'Tricky Questions', icon: '🎭', desc: 'MCQ with deceptive options to test deep understanding' }
             ].map((type) => (
               <div
                 key={type.value}
@@ -841,10 +916,12 @@ function CreateQuiz({ onQuizCreated }) {
                 ? "Paste your source code here..." 
                 : articleType === 'transcript'
                   ? "Paste your video/audio transcript here (with or without timestamps)..."
-                  : "Paste your text content or article here..."
+                  : keywords.trim()
+                    ? "Optional: Paste text to combine with keywords for better context..."
+                    : "Paste your text content or article here..."
             }
             rows="10"
-            required
+            required={!keywords.trim()}
             style={{
               width: '100%',
               padding: '12px 16px',
@@ -857,7 +934,9 @@ function CreateQuiz({ onQuizCreated }) {
             }}
           />
           <small style={{ color: '#718096', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-            {textType === 'code' 
+            {keywords.trim() 
+              ? 'Text is optional when keywords are provided. AI will generate questions based on keywords and any text you provide.'
+              : textType === 'code' 
               ? 'Paste source code. AI will generate questions to test understanding of this code.'
               : articleType === 'transcript'
                 ? 'Paste transcript content. Timestamps will be automatically removed, text will be summarized, and questions generated from the summary.'
@@ -889,6 +968,43 @@ function CreateQuiz({ onQuizCreated }) {
         </div>
         )}
 
+        {/* Keywords Input - Available for all content types */}
+        {contentSource && ['pdf', 'url', 'text'].includes(contentSource) && !isOnlyCodeDragDrop && (
+        <div className="form-group">
+          <label style={{ fontWeight: '600', fontSize: '14px', color: '#4a5568', display: 'block', marginBottom: '8px' }}>
+            🔑 Keywords (Optional)
+          </label>
+          <input
+            type="text"
+            value={keywords}
+            onChange={(e) => {
+              setKeywords(e.target.value);
+              // Auto-set article type to regular when keywords are entered
+              if (e.target.value.trim() && textType === 'article') {
+                setArticleType('regular');
+              }
+            }}
+            placeholder="e.g., variables, loops, functions, API, authentication"
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '8px',
+              fontSize: '13px',
+              background: 'white'
+            }}
+          />
+          <small style={{ color: '#718096', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+            Add comma-separated keywords to focus question generation on specific topics or concepts from your content.
+          </small>
+          {keywords.trim() && (
+            <small style={{ color: '#155724', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+              ✓ Keywords: {keywords.split(',').map(k => k.trim()).filter(k => k).join(', ')}
+            </small>
+          )}
+        </div>
+        )}
+
         {/* Duration and other common fields */}
         {contentSource && (
         <>
@@ -916,6 +1032,24 @@ function CreateQuiz({ onQuizCreated }) {
           <small style={{ color: '#718096', fontSize: '12px', marginBottom: '12px', display: 'block' }}>
             Select difficulty levels and specify number of questions for each. This applies to AI-generated questions from PDFs/URLs.
           </small>
+          {selectedQuestionTypes.TrickyQuestion && (
+            <div style={{ 
+              marginBottom: '12px', 
+              padding: '10px 12px', 
+              backgroundColor: '#fef3c7', 
+              borderLeft: '3px solid #f59e0b',
+              borderRadius: '4px'
+            }}>
+              <span style={{ fontSize: '12px', color: '#92400e', fontWeight: '600' }}>
+                💡 Tricky Questions Note:
+              </span>
+              <p style={{ fontSize: '12px', color: '#78350f', margin: '4px 0 0 0', lineHeight: '1.5' }}>
+                <strong>Easy Tricky:</strong> Subtle distinctions for basic concepts<br/>
+                <strong>Medium Tricky:</strong> Nuanced differences requiring careful analysis<br/>
+                <strong>Hard Tricky:</strong> Extremely deceptive options testing mastery
+              </p>
+            </div>
+          )}
           
           {['Easy', 'Medium', 'Hard'].map((difficulty) => {
             const icons = { Easy: '🟢', Medium: '🟡', Hard: '🔴' };
@@ -1311,7 +1445,7 @@ function CreateQuiz({ onQuizCreated }) {
                             />
                             <div style={{ flex: 1 }}>
                               <div style={{ fontSize: '14px', color: '#2d3748', marginBottom: '8px', fontWeight: '500' }}>
-                                {question.question}
+                                <FormattedText text={question.question} />
                               </div>
                               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                 <span style={{ 

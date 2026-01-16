@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { quizAPI } from '../services/api';
+import { FormattedText } from '../utils/formatText';
 
 function CodeDragDropForm({ questions, onQuestionsChange }) {
   const [currentQuestion, setCurrentQuestion] = useState({
@@ -345,7 +346,7 @@ function CodeDragDropForm({ questions, onQuestionsChange }) {
             overflow: 'auto',
             width: '90%'
           }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginBottom: '16px', color: '#667eea' }}>👁️ Preview: {previewQuestion.question}</h3>
+            <h3 style={{ marginBottom: '16px', color: '#667eea' }}>👁️ Preview: <FormattedText text={previewQuestion.question} /></h3>
             
             <div style={{ marginBottom: '16px' }}>
               <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Code:</div>

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// const API_URL = 'http://localhost:3040/api';
-const API_URL = "https://dct-app-quiz.onrender.com/api"; 
+const API_URL = 'http://localhost:3040/api';
+// const API_URL = "https://dct-app-quiz.onrender.com/api"; 
 
 const api = axios.create({
   baseURL: API_URL,
@@ -51,19 +51,25 @@ export const quizAPI = {
   deleteQuiz: (quizId) => api.delete(`/quiz/${quizId}`),
   updateQuiz: (quizId, data) => api.put(`/quiz/${quizId}`, data),
   deleteQuestion: (quizId, questionIndex) => api.delete(`/quiz/${quizId}/questions/${questionIndex}`),
+  updateQuestionCorrectAnswer: (quizId, questionId, correctAnswer) => api.patch(`/quiz/${quizId}/questions/${questionId}/correct-answer`, { correctAnswer }),
   shareResults: (quizId) => api.patch(`/quiz/${quizId}/share-results`),
   getQuizLeaderboard: (quizId) => api.get(`/quiz/${quizId}/leaderboard`),
   getOverallLeaderboard: () => api.get('/quiz/leaderboard/overall'),
   duplicateQuiz: (quizId, data) => api.post(`/quiz/${quizId}/duplicate`, data),
-  getAllQuestions: () => api.get('/quiz/all-questions'),
+  getAllQuestions: (page = 1, limit = 15) => api.get(`/quiz/all-questions?page=${page}&limit=${limit}`),
   getQuestionBank: (params) => api.get(`/quiz/question-bank${params ? '?' + params : ''}`),
   generateCodeDistractors: (data) => api.post('/quiz/generate-code-distractors', data),
+  getAllTags: () => api.get('/quiz/tags'),
 };
 
 export const submissionAPI = {
   submitQuiz: (data) => api.post('/submission', data),
   getSubmission: (quizId) => api.get(`/submission/quiz/${quizId}`),
-  getMySubmissions: () => api.get('/submission/my-submissions'),
+  getMySubmissions: (page = 1, limit = 10) => api.get(`/submission/my-submissions?page=${page}&limit=${limit}`),
+  flagQuestion: (data) => api.post('/submission/flag-question', data),
+  getSubmissionFlags: (submissionId) => api.get(`/submission/submission/${submissionId}/flags`),
+  getFlaggedQuestions: (params) => api.get(`/submission/flagged-questions${params ? '?' + params : ''}`),
+  updateFlagStatus: (flagId, data) => api.patch(`/submission/flagged-questions/${flagId}`, data),
 };
 
 export const groupAPI = {

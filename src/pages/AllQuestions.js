@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { quizAPI } from '../services/api';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
@@ -9,12 +9,24 @@ function AllQuestions() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterQuiz, setFilterQuiz] = useState('all');
   const [filterDifficulty, setFilterDifficulty] = useState('all');
   const [totalQuizzes, setTotalQuizzes] = useState(0);
+  const [editingAnswer, setEditingAnswer] = useState(null);
+  const [newCorrectAnswer, setNewCorrectAnswer] = useState('');
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalQuestions: 0,
+    limit: 15
+  });
+
+  const currentPage = parseInt(searchParams.get('page')) || 1;
+  const currentLimit = parseInt(searchParams.get('limit')) || 15;
 
   useEffect(() => {
     if (user && user.role !== 'admin') {
@@ -25,14 +37,15 @@ function AllQuestions() {
 
   useEffect(() => {
     fetchAllQuestions();
-  }, []);
+  }, [currentPage, currentLimit]);
 
   const fetchAllQuestions = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await quizAPI.getAllQuestions();
+      setLoading(true);
+      const response = await quizAPI.getAllQuestions(currentPage, currentLimit);
       setQuestions(response.data.questions);
       setTotalQuizzes(response.data.totalQuizzes);
+      setPagination(response.data.pagination);
     } catch (error) {
       showToast(error.response?.data?.message || 'Failed to fetch questions', 'error');
       if (error.response?.status === 403) {
@@ -41,6 +54,41 @@ function AllQuestions() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    setSearchParams({ page: newPage.toString(), limit: currentLimit.toString() });
+  };
+
+  const handleLimitChange = (newLimit) => {
+    setSearchParams({ page: '1', limit: newLimit.toString() });
+  };
+
+  const handleUpdateCorrectAnswer = async (item) => {
+    if (newCorrectAnswer === '' && newCorrectAnswer !== 0) {
+      showToast('Please select/enter the correct answer', 'error');
+      return;
+    }
+
+    try {
+      await quizAPI.updateQuestionCorrectAnswer(item.quizId, item.questionId, newCorrectAnswer);
+      showToast('Correct answer updated successfully', 'success');
+      setEditingAnswer(null);
+      setNewCorrectAnswer('');
+      fetchAllQuestions();
+    } catch (error) {
+      showToast(error.response?.data?.message || 'Failed to update correct answer', 'error');
+    }
+  };
+
+  const startEditingAnswer = (item) => {
+    setEditingAnswer(item.questionId);
+    setNewCorrectAnswer(item.correctAnswer);
+  };
+
+  const cancelEditingAnswer = () => {
+    setEditingAnswer(null);
+    setNewCorrectAnswer('');
   };
 
   // Get unique quizzes for filter
@@ -129,6 +177,56 @@ function AllQuestions() {
           </select>
         </div>
 
+        {/* Questions per page selector */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '16px',
+          padding: '12px 16px',
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <label style={{
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#4a5568'
+            }}>
+              Questions per page:
+            </label>
+            <select
+              value={currentLimit}
+              onChange={(e) => handleLimitChange(parseInt(e.target.value))}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e0',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value="15">15</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <span style={{
+            fontSize: '13px',
+            color: '#718096'
+          }}>
+            Total: {pagination.totalQuestions} questions
+          </span>
+        </div>
+
         {filteredQuestions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', color: '#718096', fontSize: '14px' }}>
             <p style={{ marginBottom: '8px', fontSize: '15px' }}>
@@ -136,6 +234,7 @@ function AllQuestions() {
             </p>
           </div>
         ) : (
+          <>
           <div style={{ display: 'grid', gap: '16px' }}>
             {filteredQuestions.map((item) => {
               // Difficulty styling
@@ -183,6 +282,19 @@ function AllQuestions() {
                       <span style={{ fontSize: '11px', color: '#718096', marginLeft: '8px' }}>
                         {item.quizCode}
                       </span>
+                      {item.questionType && (
+                        <span style={{
+                          fontSize: '11px',
+                          color: '#d69e2e',
+                          backgroundColor: '#fef3c7',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          marginLeft: '8px',
+                          fontWeight: '600'
+                        }}>
+                          {item.questionType}
+                        </span>
+                      )}
                     </div>
                     
                     {/* Difficulty Badge */}
@@ -246,29 +358,88 @@ function AllQuestions() {
                 </div>
 
                 {/* Options */}
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {item.options.map((option, optIndex) => (
-                    <div
-                      key={optIndex}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        backgroundColor: optIndex === item.correctAnswer ? '#c6f6d5' : 'white',
-                        border: optIndex === item.correctAnswer ? '1.5px solid #48bb78' : '1px solid #e2e8f0',
-                        color: optIndex === item.correctAnswer ? '#2f855a' : '#4a5568',
-                        fontWeight: optIndex === item.correctAnswer ? '600' : '500'
-                      }}
-                    >
-                      <span style={{ fontWeight: '700', marginRight: '6px' }}>
-                        {String.fromCharCode(65 + optIndex)}.
-                      </span>
-                      <FormattedText text={option} />
-                      {optIndex === item.correctAnswer && (
-                        <span style={{ marginLeft: '8px', fontSize: '14px' }}>✓ Correct</span>
-                      )}
-                    </div>
-                  ))}
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <h5 style={{ fontSize: '13px', fontWeight: '600', color: '#4a5568', margin: 0 }}>Options</h5>
+                    {editingAnswer === item.questionId ? (
+                      <div>
+                        <button
+                          onClick={() => handleUpdateCorrectAnswer(item)}
+                          style={{
+                            padding: '4px 12px',
+                            fontSize: '12px',
+                            backgroundColor: '#48bb78',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            marginRight: '4px'
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEditingAnswer}
+                          style={{
+                            padding: '4px 12px',
+                            fontSize: '12px',
+                            backgroundColor: '#cbd5e0',
+                            color: '#2d3748',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditingAnswer(item)}
+                        style={{
+                          padding: '4px 12px',
+                          fontSize: '12px',
+                          backgroundColor: '#667eea',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✏️ Edit Correct Answer
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {item.options.map((option, optIndex) => (
+                      <div
+                        key={optIndex}
+                        onClick={() => editingAnswer === item.questionId && setNewCorrectAnswer(optIndex)}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          backgroundColor: editingAnswer === item.questionId && newCorrectAnswer === optIndex ? '#bee3f8' :
+                                           optIndex === item.correctAnswer ? '#c6f6d5' : 'white',
+                          border: editingAnswer === item.questionId && newCorrectAnswer === optIndex ? '2px solid #3182ce' :
+                                  optIndex === item.correctAnswer ? '1.5px solid #48bb78' : '1px solid #e2e8f0',
+                          color: optIndex === item.correctAnswer ? '#2f855a' : '#4a5568',
+                          fontWeight: optIndex === item.correctAnswer ? '600' : '500',
+                          cursor: editingAnswer === item.questionId ? 'pointer' : 'default',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <span style={{ fontWeight: '700', marginRight: '6px' }}>
+                          {String.fromCharCode(65 + optIndex)}.
+                        </span>
+                        <FormattedText text={option} />
+                        {editingAnswer === item.questionId && newCorrectAnswer === optIndex && <span style={{ marginLeft: '8px', color: '#3182ce' }}>← Select this</span>}
+                        {editingAnswer !== item.questionId && optIndex === item.correctAnswer && (
+                          <span style={{ marginLeft: '8px', fontSize: '14px' }}>✓ Correct</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Explanation */}
@@ -294,9 +465,104 @@ function AllQuestions() {
                   </div>
                 )}
               </div>
-              );
-            })}
+            );
+          })}
           </div>
+
+          {/* Pagination Controls */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginTop: '30px',
+            padding: '20px',
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={!pagination.hasPrevPage}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: pagination.hasPrevPage ? '#3182ce' : '#e2e8f0',
+                  color: pagination.hasPrevPage ? 'white' : '#a0aec0',
+                  cursor: pagination.hasPrevPage ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ← Previous
+              </button>
+
+              <div style={{
+                display: 'flex',
+                gap: '6px',
+                alignItems: 'center'
+              }}>
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        fontWeight: pageNum === currentPage ? '700' : '500',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: pageNum === currentPage ? '#3182ce' : '#edf2f7',
+                        color: pageNum === currentPage ? 'white' : '#4a5568',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        minWidth: '36px'
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={!pagination.hasNextPage}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: pagination.hasNextPage ? '#3182ce' : '#e2e8f0',
+                  color: pagination.hasNextPage ? 'white' : '#a0aec0',
+                  cursor: pagination.hasNextPage ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+          </>
         )}
       </div>
     </div>

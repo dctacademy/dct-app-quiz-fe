@@ -641,6 +641,28 @@ function QuizSubmissions({ quiz, onBack, onDelete }) {
           <p style={{ color: '#718096', marginBottom: '12px', fontSize: '13px' }}>
             📋 <strong>{quiz.quizCode}</strong> • {quiz.questions.length} questions • {quiz.duration} minutes
           </p>
+          
+          {/* Tags display */}
+          {quiz.tags && quiz.tags.length > 0 && (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+              {quiz.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    padding: '3px 10px',
+                    background: '#eef2ff',
+                    color: '#667eea',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    border: '1px solid #c7d2fe'
+                  }}
+                >
+                  🏷️ {tag.name || tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -1071,6 +1093,8 @@ function QuizSubmissions({ quiz, onBack, onDelete }) {
                           name: submission.user?.name || 'Unknown',
                           email: submission.user?.email || '',
                           answer: result.selectedAnswer !== undefined ? question.options[result.selectedAnswer] : 'Not answered',
+                          selectedIndex: result.selectedAnswer,
+                          weight: result.isCorrect ? 1 : 0,
                           submittedAt: new Date(submission.submittedAt).toLocaleString()
                         };
                         if (result.isCorrect) {
@@ -1255,6 +1279,129 @@ function QuizSubmissions({ quiz, onBack, onDelete }) {
                 </p>
               </div>
 
+              {/* Wrong Options Distribution */}
+              {studentModal.type === 'wrong' && studentModal.students.length > 0 && (() => {
+                const optionCounts = {};
+                studentModal.students.forEach(student => {
+                  if (student.selectedIndex !== undefined) {
+                    const optionLetter = String.fromCharCode(65 + student.selectedIndex);
+                    if (!optionCounts[optionLetter]) {
+                      optionCounts[optionLetter] = {
+                        count: 0,
+                        answer: student.answer,
+                        weight: student.weight || 0
+                      };
+                    }
+                    optionCounts[optionLetter].count++;
+                  }
+                });
+                
+                const maxCount = Math.max(...Object.values(optionCounts).map(d => d.count));
+                
+                return Object.keys(optionCounts).length > 0 && (
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    backgroundColor: '#fff5f5',
+                    borderRadius: '8px',
+                    border: '1.5px solid #feb2b2'
+                  }}>
+                    <h4 style={{ 
+                      margin: '0 0 12px 0', 
+                      fontSize: '14px', 
+                      fontWeight: '600',
+                      color: '#2d3748'
+                    }}>
+                      📊 Wrong Options Distribution
+                    </h4>
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '16px',
+                      alignItems: 'flex-end',
+                      justifyContent: 'space-around',
+                      padding: '20px 10px 10px',
+                      minHeight: '200px',
+                      borderBottom: '2px solid #cbd5e0'
+                    }}>
+                      {Object.entries(optionCounts).sort((a, b) => a[0].localeCompare(b[0])).map(([option, data]) => {
+                        const heightPercentage = (data.count / maxCount) * 100;
+                        return (
+                          <div key={option} style={{ 
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            <div style={{ 
+                              width: '100%',
+                              maxWidth: '80px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
+                              height: '150px'
+                            }}>
+                              <div style={{
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                color: '#c53030',
+                                marginBottom: '4px'
+                              }}>
+                                {data.count}
+                              </div>
+                              <div style={{
+                                width: '100%',
+                                height: `${heightPercentage}%`,
+                                backgroundColor: '#fc8181',
+                                borderRadius: '6px 6px 0 0',
+                                transition: 'height 0.3s ease',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'flex-start',
+                                paddingTop: '8px',
+                                minHeight: '30px',
+                                boxShadow: '0 -2px 4px rgba(0,0,0,0.1)'
+                              }}>
+                                <span style={{ 
+                                  color: 'white', 
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+                                }}>
+                                  {((data.count / studentModal.students.length) * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{
+                              textAlign: 'center',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              color: '#2d3748',
+                              marginTop: '8px'
+                            }}>
+                              Option {option}
+                            </div>
+                            <div style={{
+                              fontSize: '11px',
+                              color: '#4a5568',
+                              textAlign: 'center',
+                              maxWidth: '100px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }} title={data.answer}>
+                              {data.answer}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div style={{ display: 'grid', gap: '10px' }}>
                 {studentModal.students.map((student, idx) => (
                   <div key={idx} style={{
@@ -1271,14 +1418,24 @@ function QuizSubmissions({ quiz, onBack, onDelete }) {
                     </div>
                     {studentModal.type === 'wrong' && student.answer && (
                       <div style={{ 
-                        color: '#c53030', 
-                        fontSize: '12px', 
                         marginTop: '6px',
-                        fontStyle: 'italic',
                         paddingTop: '6px',
                         borderTop: '1px solid #feb2b2'
                       }}>
-                        Their answer: {student.answer}
+                        <div style={{
+                          color: '#c53030', 
+                          fontSize: '12px', 
+                          fontStyle: 'italic'
+                        }}>
+                          Their answer: {student.answer}
+                        </div>
+                        <div style={{
+                          marginTop: '4px',
+                          fontSize: '11px',
+                          color: '#718096'
+                        }}>
+                          <strong>Option:</strong> {student.selectedIndex !== undefined ? String.fromCharCode(65 + student.selectedIndex) : 'N/A'}
+                        </div>
                       </div>
                     )}
                   </div>

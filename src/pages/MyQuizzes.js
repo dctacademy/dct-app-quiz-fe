@@ -1,24 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { submissionAPI } from '../services/api';
 import { FormattedText } from '../utils/formatText';
+import { useToast } from '../components/Toast';
+import Select from 'react-select';
 
 function MyQuizzes() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedQuiz, setExpandedQuiz] = useState(null);
+  const [flaggedQuestions, setFlaggedQuestions] = useState({});
+  const [flaggingQuestion, setFlaggingQuestion] = useState(null);
+  const [flagReason, setFlagReason] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [availableTags, setAvailableTags] = useState([]);
   const navigate = useNavigate();
+  const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get current page from URL or default to 1
+  const currentPage = parseInt(searchParams.get('page')) || 1;
+  
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalSubmissions: 0,
+    limit: 10,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
 
   useEffect(() => {
-    fetchMySubmissions();
-  }, []);
+    fetchMySubmissions(currentPage);
+  }, [currentPage]);
 
-  const fetchMySubmissions = async () => {
+  const fetchMySubmissions = async (page = 1) => {
     try {
-      const response = await submissionAPI.getMySubmissions();
+      const response = await submissionAPI.getMySubmissions(page, 10);
+      
       // Group submissions by quiz
       const grouped = {};
-      response.data.forEach(sub => {
+      response.data.submissions.forEach(sub => {
         const quizId = sub.quiz._id;
         if (!grouped[quizId]) {
           grouped[quizId] = [];
@@ -30,11 +52,76 @@ function MyQuizzes() {
         grouped[quizId].sort((a, b) => a.attemptNumber - b.attemptNumber);
       });
       setSubmissions(grouped);
+      setPagination(response.data.pagination);
+      
+      // Extract unique tags from all quizzes
+      const tagsSet = new Set();
+      response.data.submissions.forEach(sub => {
+        if (sub.quiz && sub.quiz.tags) {
+          sub.quiz.tags.forEach(tag => {
+            if (tag && tag.name) {
+              tagsSet.add(tag.name);
+            }
+          });
+        }
+      });
+      const tagOptions = Array.from(tagsSet).sort().map(tag => ({ value: tag, label: tag }));
+      setAvailableTags(tagOptions);
+      
+      // Load flags for all submissions
+      loadAllFlags(response.data.submissions);
     } catch (error) {
       console.error('Error fetching submissions:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadAllFlags = async (allSubmissions) => {
+    try {
+      const flagsMap = {};
+      await Promise.all(allSubmissions.map(async (sub) => {
+        const response = await submissionAPI.getSubmissionFlags(sub._id);
+        response.data.forEach(flag => {
+          const key = `${sub._id}_${flag.question.toString()}`;
+          flagsMap[key] = flag;
+        });
+      }));
+      setFlaggedQuestions(flagsMap);
+    } catch (error) {
+      console.error('Error loading flags:', error);
+    }
+  };
+
+  const handleFlagQuestion = async (submissionId, questionId) => {
+    if (!flagReason.trim()) {
+      showToast('Please provide a reason for flagging this question', 'error');
+      return;
+    }
+
+    try {
+      await submissionAPI.flagQuestion({
+        submissionId: submissionId,
+        questionId: questionId,
+        reason: flagReason
+      });
+      
+      const key = `${submissionId}_${questionId}`;
+      setFlaggedQuestions({
+        ...flaggedQuestions,
+        [key]: { status: 'pending', reason: flagReason }
+      });
+      setFlaggingQuestion(null);
+      setFlagReason('');
+      showToast('Question flagged successfully. Admin will review it.', 'success');
+    } catch (error) {
+      showToast(error.response?.data?.message || 'Failed to flag question', 'error');
+    }
+  };
+
+  const handlePageChange = (newPage) => {
+    setSearchParams({ page: newPage.toString() });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   if (loading) {
@@ -60,6 +147,50 @@ function MyQuizzes() {
           </p>
         </div>
 
+        {/* Tag Filter */}
+        {availableTags.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px', color: '#4a5568' }}>
+              🏷️ Filter by Tags
+            </label>
+            <Select
+              isMulti
+              value={selectedTags}
+              onChange={setSelectedTags}
+              options={availableTags}
+              placeholder="Select tags to filter..."
+              isClearable
+              styles={{
+                control: (base) => ({
+                  ...base,
+                  borderColor: '#e2e8f0',
+                  '&:hover': { borderColor: '#cbd5e0' },
+                  boxShadow: 'none',
+                  fontSize: '13px'
+                }),
+                multiValue: (base) => ({
+                  ...base,
+                  backgroundColor: '#eef2ff',
+                }),
+                multiValueLabel: (base) => ({
+                  ...base,
+                  color: '#667eea',
+                  fontWeight: '500',
+                  fontSize: '12px'
+                }),
+                multiValueRemove: (base) => ({
+                  ...base,
+                  color: '#667eea',
+                  '&:hover': {
+                    backgroundColor: '#667eea',
+                    color: 'white',
+                  },
+                }),
+              }}
+            />
+          </div>
+        )}
+
         {Object.keys(submissions).length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', background: '#f7fafc', borderRadius: '12px' }}>
             <p style={{ color: '#718096', fontSize: '15px', marginBottom: '8px' }}>
@@ -78,7 +209,19 @@ function MyQuizzes() {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '12px' }}>
-            {Object.entries(submissions).map(([quizId, quizSubmissions]) => {
+            {Object.entries(submissions)
+              .filter(([quizId, quizSubmissions]) => {
+                // If no tags selected, show all
+                if (selectedTags.length === 0) return true;
+                
+                // Check if quiz has any of the selected tags
+                const mainSubmission = quizSubmissions[0];
+                if (!mainSubmission.quiz || !mainSubmission.quiz.tags) return false;
+                
+                const quizTagNames = mainSubmission.quiz.tags.map(tag => tag.name || tag);
+                return selectedTags.some(selectedTag => quizTagNames.includes(selectedTag.value));
+              })
+              .map(([quizId, quizSubmissions]) => {
               const mainSubmission = quizSubmissions[0]; // First attempt is the main one
               const practiceAttempts = quizSubmissions.slice(1); // Rest are practice
               const percentage = ((mainSubmission.score / mainSubmission.totalQuestions) * 100).toFixed(2);
@@ -118,19 +261,44 @@ function MyQuizzes() {
                           {mainSubmission.quiz.description}
                         </p>
                       )}
+                      
+                      {/* Tags display */}
+                      {mainSubmission.quiz.tags && mainSubmission.quiz.tags.length > 0 && (
+                        <div style={{ marginBottom: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {mainSubmission.quiz.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '2px 8px',
+                                background: '#eef2ff',
+                                color: '#667eea',
+                                borderRadius: '10px',
+                                fontSize: '10px',
+                                fontWeight: '500',
+                                border: '1px solid #c7d2fe'
+                              }}
+                            >
+                              🏷️ {tag.name || tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      
                       <p style={{ color: '#4a5568', fontSize: '12px' }}>
                         📋 Code: <strong>{mainSubmission.quiz.quizCode}</strong>
-                        <span style={{ 
-                          marginLeft: '12px',
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          backgroundColor: '#eef2ff',
-                          color: '#667eea',
-                          fontSize: '11px',
-                          fontWeight: '600'
-                        }}>
-                          {mainSubmission.quiz.quizType}
-                        </span>
+                        {mainSubmission.quiz.quizType && (
+                          <span style={{ 
+                            marginLeft: '12px',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: '#fef3c7',
+                            color: '#d69e2e',
+                            fontSize: '11px',
+                            fontWeight: '600'
+                          }}>
+                            📝 {mainSubmission.quiz.quizType}
+                          </span>
+                        )}
                         {practiceAttempts.length > 0 && (
                           <span style={{ marginLeft: '12px', color: '#d69e2e', fontSize: '11px', fontWeight: '600' }}>
                             🔄 {practiceAttempts.length} practice attempt{practiceAttempts.length > 1 ? 's' : ''}
@@ -259,51 +427,51 @@ function MyQuizzes() {
                                 const questionType = item.questionType || 'MCQ';
                                 
                                 return (
-                        <div 
-                          key={item.questionId} 
-                          style={{ 
-                            marginBottom: '12px',
-                            padding: '12px',
-                            border: `2px solid ${item.isCorrect ? '#48bb78' : '#f56565'}`,
-                            borderRadius: '8px',
-                            backgroundColor: item.isCorrect ? '#f0fff4' : '#fff5f5'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                            <span style={{ 
-                              fontSize: '16px', 
-                              marginRight: '6px',
-                              color: item.isCorrect ? '#48bb78' : '#f56565'
-                            }}>
-                              {item.isCorrect ? '✓' : '✗'}
-                            </span>
-                            <h5 style={{ margin: 0, flex: 1, fontSize: '13px', fontWeight: '600', color: '#2d3748' }}>
-                              Q{index + 1}: <FormattedText text={item.question} />
-                            </h5>
-                            <span style={{
-                              fontSize: '11px',
-                              padding: '3px 8px',
-                              background: item.isCorrect ? '#c6f6d5' : '#fed7d7',
-                              borderRadius: '4px',
-                              color: item.isCorrect ? '#2f855a' : '#c53030',
-                              marginLeft: '6px',
-                              fontWeight: '600'
-                            }}>
-                              {item.essayGrading ? `${item.essayGrading.score}/10` : item.isCorrect ? '1/1' : '0/1'}
-                            </span>
-                            <span style={{
-                              fontSize: '10px',
-                              padding: '2px 6px',
-                              background: '#e2e8f0',
-                              borderRadius: '4px',
-                              color: '#4a5568',
-                              marginLeft: '6px'
-                            }}>
-                              {questionType}
-                            </span>
-                          </div>
+                                  <div 
+                                    key={item.questionId} 
+                                    style={{ 
+                                      marginBottom: '12px',
+                                      padding: '12px',
+                                      border: `2px solid ${item.isCorrect ? '#48bb78' : '#f56565'}`,
+                                      borderRadius: '8px',
+                                      backgroundColor: item.isCorrect ? '#f0fff4' : '#fff5f5'
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                      <span style={{ 
+                                        fontSize: '16px', 
+                                        marginRight: '6px',
+                                        color: item.isCorrect ? '#48bb78' : '#f56565'
+                                      }}>
+                                        {item.isCorrect ? '✓' : '✗'}
+                                      </span>
+                                      <h5 style={{ margin: 0, flex: 1, fontSize: '13px', fontWeight: '600', color: '#2d3748' }}>
+                                        Q{index + 1}: <FormattedText text={item.question} />
+                                      </h5>
+                                      <span style={{
+                                        fontSize: '11px',
+                                        padding: '3px 8px',
+                                        background: item.isCorrect ? '#c6f6d5' : '#fed7d7',
+                                        borderRadius: '4px',
+                                        color: item.isCorrect ? '#2f855a' : '#c53030',
+                                        marginLeft: '6px',
+                                        fontWeight: '600'
+                                      }}>
+                                        {item.essayGrading ? `${item.essayGrading.score}/10` : item.isCorrect ? '1/1' : '0/1'}
+                                      </span>
+                                      <span style={{
+                                        fontSize: '10px',
+                                        padding: '2px 6px',
+                                        background: '#e2e8f0',
+                                        borderRadius: '4px',
+                                        color: '#4a5568',
+                                        marginLeft: '6px'
+                                      }}>
+                                        {questionType}
+                                      </span>
+                                    </div>
 
-                          <div style={{ marginLeft: '22px' }}>
+                                    <div style={{ marginLeft: '22px' }}>
                             {/* MCQ Type */}
                             {questionType === 'MCQ' && item.options && (
                               <>
@@ -530,53 +698,125 @@ function MyQuizzes() {
                                     )}
                                   </div>
                                 )}
-                                
-                                {item.correctAnswer && (
-                                  <div style={{ marginTop: '10px' }}>
-                                    <div style={{ fontSize: '11px', color: '#718096', marginBottom: '3px', fontWeight: '600' }}>
-                                      Model Answer:
-                                    </div>
-                                    <div style={{ 
-                                      padding: '10px',
-                                      borderRadius: '6px',
-                                      fontSize: '12px',
-                                      backgroundColor: '#f0fff4',
-                                      border: '1.5px solid #9ae6b4',
-                                      color: '#2f855a',
-                                      whiteSpace: 'pre-wrap',
-                                      lineHeight: '1.5'
-                                    }}>
-                                      {item.correctAnswer}
-                                    </div>
-                                  </div>
-                                )}
                               </>
                             )}
 
-                            {!item.isCorrect && item.explanation && questionType !== 'Essay' && (
-                              <div style={{ 
-                                marginTop: '8px',
-                                padding: '10px',
-                                backgroundColor: '#fefcbf',
-                                borderLeft: '3px solid #d69e2e',
-                                borderRadius: '6px'
-                              }}>
-                                <p style={{ 
-                                  fontWeight: '600', 
-                                  marginBottom: '4px',
-                                  color: '#744210',
-                                  fontSize: '11px'
-                                }}>
-                                  💡 Explanation
-                                </p>
-                                <p style={{ margin: 0, color: '#744210', lineHeight: '1.5', fontSize: '12px' }}>
-                                  <FormattedText text={item.explanation} />
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                                </div>
-                              );
+                            {/* Flag Question Section */}
+                            <div style={{ 
+                              marginTop: '10px',
+                              paddingTop: '10px',
+                              borderTop: '1px solid #e2e8f0'
+                            }}>
+                              {(() => {
+                                const flagKey = `${submission._id}_${item.questionId}`;
+                                return flaggedQuestions[flagKey] ? (
+                                  <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center',
+                                    fontSize: '11px',
+                                    color: '#718096'
+                                  }}>
+                                    <span style={{ marginRight: '6px' }}>🚩</span>
+                                    <span>
+                                      Flagged as incorrect ({flaggedQuestions[flagKey].status || 'pending'})
+                                    </span>
+                                  </div>
+                                ) : flaggingQuestion === `${submission._id}_${item.questionId}` ? (
+                                  <div>
+                                    <div style={{ marginBottom: '6px' }}>
+                                      <label style={{ 
+                                        display: 'block', 
+                                        fontSize: '11px', 
+                                        fontWeight: '600', 
+                                        color: '#2d3748',
+                                        marginBottom: '4px'
+                                      }}>
+                                        Why do you think this answer is wrong?
+                                      </label>
+                                      <textarea
+                                        value={flagReason}
+                                        onChange={(e) => setFlagReason(e.target.value)}
+                                        placeholder="Explain why you believe the correct answer is wrong..."
+                                        style={{
+                                          width: '100%',
+                                          minHeight: '50px',
+                                          padding: '6px',
+                                          fontSize: '12px',
+                                          borderRadius: '6px',
+                                          border: '1px solid #cbd5e0',
+                                          resize: 'vertical'
+                                        }}
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                      <button
+                                        onClick={() => handleFlagQuestion(submission._id, item.questionId)}
+                                        style={{
+                                          padding: '5px 10px',
+                                          fontSize: '11px',
+                                          fontWeight: '600',
+                                          color: '#fff',
+                                          backgroundColor: '#f56565',
+                                          border: 'none',
+                                          borderRadius: '5px',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        Submit Flag
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setFlaggingQuestion(null);
+                                          setFlagReason('');
+                                        }}
+                                        style={{
+                                          padding: '5px 10px',
+                                          fontSize: '11px',
+                                          fontWeight: '600',
+                                          color: '#4a5568',
+                                          backgroundColor: '#e2e8f0',
+                                          border: 'none',
+                                          borderRadius: '5px',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setFlaggingQuestion(`${submission._id}_${item.questionId}`)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '5px 10px',
+                                      fontSize: '11px',
+                                      fontWeight: '600',
+                                      color: '#c53030',
+                                      backgroundColor: 'transparent',
+                                      border: '1px solid #fc8181',
+                                      borderRadius: '5px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                      e.currentTarget.style.backgroundColor = '#fff5f5';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      e.currentTarget.style.backgroundColor = 'transparent';
+                                    }}
+                                  >
+                                    <span>🚩</span>
+                                    <span>Flag as Wrong Answer</span>
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                                    </div>
+                                  </div>
+                                );
                               })}
                             </div>
                           )}
@@ -589,9 +829,85 @@ function MyQuizzes() {
             })}
           </div>
         )}
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '32px',
+            paddingTop: '24px',
+            borderTop: '1px solid #e2e8f0'
+          }}>
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={!pagination.hasPrevPage}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: pagination.hasPrevPage ? 'white' : '#f7fafc',
+                color: pagination.hasPrevPage ? '#667eea' : '#cbd5e0',
+                border: '1.5px solid',
+                borderColor: pagination.hasPrevPage ? '#667eea' : '#e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: pagination.hasPrevPage ? 'pointer' : 'not-allowed',
+                transition: 'all 0.2s'
+              }}
+            >
+              ← Previous
+            </button>
+
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button
+                  key={pageNum}
+                  onClick={() => handlePageChange(pageNum)}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: pageNum === currentPage ? '#667eea' : 'white',
+                    color: pageNum === currentPage ? 'white' : '#4a5568',
+                    border: '1.5px solid',
+                    borderColor: pageNum === currentPage ? '#667eea' : '#e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    minWidth: '40px'
+                  }}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={!pagination.hasNextPage}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: pagination.hasNextPage ? 'white' : '#f7fafc',
+                color: pagination.hasNextPage ? '#667eea' : '#cbd5e0',
+                border: '1.5px solid',
+                borderColor: pagination.hasNextPage ? '#667eea' : '#e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: pagination.hasNextPage ? 'pointer' : 'not-allowed',
+                transition: 'all 0.2s'
+              }}
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export default MyQuizzes;
+

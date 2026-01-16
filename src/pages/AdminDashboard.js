@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { quizAPI } from '../services/api';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
 import CreateQuiz from '../components/CreateQuiz';
 import QuizSubmissions from '../components/QuizSubmissions';
+import FlaggedQuestions from '../components/FlaggedQuestions';
 import { FormattedText } from '../utils/formatText';
 
 function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   // Verify user is admin
   useEffect(() => {
@@ -26,7 +28,13 @@ function AdminDashboard() {
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [editingQuiz, setEditingQuiz] = useState(null);
   const [viewingQuestions, setViewingQuestions] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [viewingFlaggedQuestions, setViewingFlaggedQuestions] = useState(false);
+  const [editingAnswer, setEditingAnswer] = useState(null);
+  const [newCorrectAnswer, setNewCorrectAnswer] = useState('');
+  
+  // Get current page from URL or default to 1
+  const currentPage = parseInt(searchParams.get('page')) || 1;
+  
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -37,13 +45,13 @@ function AdminDashboard() {
   });
 
   useEffect(() => {
-    fetchQuizzes();
+    fetchQuizzes(currentPage);
   }, [currentPage]);
 
-  const fetchQuizzes = async () => {
+  const fetchQuizzes = async (page = 1) => {
     setLoading(true);
     try {
-      const response = await quizAPI.getMyQuizzes(currentPage);
+      const response = await quizAPI.getMyQuizzes(page, 10);
       setQuizzes(response.data.quizzes);
       setPagination(response.data.pagination);
     } catch (error) {
@@ -59,8 +67,8 @@ function AdminDashboard() {
 
   const handleQuizCreated = () => {
     setShowCreateForm(false);
-    setCurrentPage(1); // Reset to first page
-    fetchQuizzes();
+    setSearchParams({ page: '1' }); // Reset to first page
+    fetchQuizzes(1);
   };
 
   const handleDeleteQuiz = async (quizId, quizTitle) => {
@@ -75,14 +83,46 @@ function AdminDashboard() {
       setSelectedQuiz(null);
       // If current page becomes empty after delete, go to previous page
       if (quizzes.length === 1 && currentPage > 1) {
-        setCurrentPage(currentPage - 1);
+        setSearchParams({ page: (currentPage - 1).toString() });
       } else {
-        fetchQuizzes(); // Refresh the list
+        fetchQuizzes(currentPage); // Refresh the list
       }
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Failed to delete quiz';
       showToast(errorMsg, 'error');
     }
+  };
+
+  const handleUpdateCorrectAnswer = async (questionId, questionIndex) => {
+    if (newCorrectAnswer === '' && newCorrectAnswer !== 0) {
+      showToast('Please select/enter the correct answer', 'error');
+      return;
+    }
+
+    try {
+      await quizAPI.updateQuestionCorrectAnswer(viewingQuestions._id, questionId, newCorrectAnswer);
+      showToast('Correct answer updated successfully', 'success');
+      
+      // Update local state
+      const updatedQuestions = [...viewingQuestions.questions];
+      updatedQuestions[questionIndex].correctAnswer = newCorrectAnswer;
+      setViewingQuestions({ ...viewingQuestions, questions: updatedQuestions });
+      
+      setEditingAnswer(null);
+      setNewCorrectAnswer('');
+    } catch (error) {
+      showToast(error.response?.data?.message || 'Failed to update correct answer', 'error');
+    }
+  };
+
+  const startEditingAnswer = (question) => {
+    setEditingAnswer(question._id);
+    setNewCorrectAnswer(question.correctAnswer);
+  };
+
+  const cancelEditingAnswer = () => {
+    setEditingAnswer(null);
+    setNewCorrectAnswer('');
   };
 
   const handleDeleteQuestion = async (quizId, questionIndex) => {
@@ -94,19 +134,20 @@ function AdminDashboard() {
       await quizAPI.deleteQuestion(quizId, questionIndex);
       showToast('Question deleted successfully', 'success');
       
-      // Refresh the quiz list
-      await fetchQuizzes(currentPage);
-      
-      // Update the viewingQuestions state to reflect the change
+      // Update the viewingQuestions state immediately by removing the question
       if (viewingQuestions) {
-        const updatedQuiz = quizzes.find(q => q._id === quizId);
-        if (updatedQuiz && updatedQuiz.questions.length > 0) {
-          setViewingQuestions(updatedQuiz);
+        const updatedQuestions = viewingQuestions.questions.filter((_, idx) => idx !== questionIndex);
+        
+        if (updatedQuestions.length > 0) {
+          setViewingQuestions({ ...viewingQuestions, questions: updatedQuestions });
         } else {
-          // If quiz no longer exists or has no questions, close modal
+          // If no questions left, close modal
           setViewingQuestions(null);
         }
       }
+      
+      // Refresh the quiz list in the background
+      fetchQuizzes(currentPage);
     } catch (err) {
       const errorMsg = err.response?.data?.message || 'Failed to delete question';
       showToast(errorMsg, 'error');
@@ -130,12 +171,16 @@ function AdminDashboard() {
   };
 
   const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
+    setSearchParams({ page: newPage.toString() });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   if (loading) {
     return <div className="loading">Loading...</div>;
+  }
+
+  if (viewingFlaggedQuestions) {
+    return <FlaggedQuestions onBack={() => setViewingFlaggedQuestions(false)} />;
   }
 
   if (selectedQuiz) {
@@ -159,19 +204,28 @@ function AdminDashboard() {
             <h2 style={{ color: '#667eea', fontSize: '22px', marginBottom: '4px' }}>Admin Dashboard</h2>
             <p style={{ color: '#718096', fontSize: '13px', margin: 0 }}>Manage your quizzes and view submissions</p>
           </div>
-          <button 
-            className="btn btn-primary" 
-            onClick={() => setShowCreateForm(!showCreateForm)}
-          >
-            {showCreateForm ? '✕ Cancel' : '+ New Quiz'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => setViewingFlaggedQuestions(true)}
+              style={{ fontSize: '13px' }}
+            >
+              🚩 Flagged Questions
+            </button>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => setShowCreateForm(!showCreateForm)}
+            >
+              {showCreateForm ? '✕ Cancel' : '+ New Quiz'}
+            </button>
+          </div>
         </div>
 
         {showCreateForm && (
           <CreateQuiz onQuizCreated={handleQuizCreated} />
         )}
 
-        <h3 style={{ marginTop: '32px', marginBottom: '16px', fontSize: '17px', fontWeight: '600', color: '#2d3748' }}>Your Quizzes ({quizzes.length})</h3>
+        <h3 style={{ marginTop: '32px', marginBottom: '16px', fontSize: '17px', fontWeight: '600', color: '#2d3748' }}>Your Quizzes ({quizzes.length} of {pagination.totalQuizzes})</h3>
         {quizzes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 24px', color: '#718096', fontSize: '14px' }}>
             <p style={{ marginBottom: '8px', fontSize: '15px' }}>No quizzes created yet</p>
@@ -213,10 +267,45 @@ function AdminDashboard() {
                   {quiz.title}
                 </h4>
                 <p style={{ color: '#718096', marginBottom: '12px', fontSize: '13px', lineHeight: '1.5' }}>{quiz.description}</p>
+                
+                {/* Tags display */}
+                {quiz.tags && quiz.tags.length > 0 && (
+                  <div style={{ marginBottom: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {quiz.tags.map((tag, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          padding: '3px 10px',
+                          background: '#eef2ff',
+                          color: '#667eea',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          border: '1px solid #c7d2fe'
+                        }}
+                      >
+                        🏷️ {tag.name || tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                
                 <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', fontSize: '13px', marginBottom: '12px' }}>
                   <span style={{ fontWeight: '600', color: '#667eea', padding: '4px 10px', background: '#eef2ff', borderRadius: '6px' }}>
                     📋 {quiz.quizCode}
                   </span>
+                  {quiz.quizType && (
+                    <span style={{
+                      fontWeight: '600',
+                      color: '#d69e2e',
+                      padding: '4px 10px',
+                      background: '#fef3c7',
+                      borderRadius: '6px',
+                      fontSize: '12px'
+                    }}>
+                      📝 {quiz.quizType}
+                    </span>
+                  )}
                   {quiz.difficulties && quiz.difficulties.length > 0 ? (
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                       {quiz.difficulties.map((diff, idx) => (
@@ -538,29 +627,88 @@ function AdminDashboard() {
                     </p>
                   </div>
 
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {question.options.map((option, optIndex) => (
-                      <div
-                        key={optIndex}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                          backgroundColor: optIndex === question.correctAnswer ? '#c6f6d5' : 'white',
-                          border: optIndex === question.correctAnswer ? '1.5px solid #48bb78' : '1px solid #e2e8f0',
-                          color: optIndex === question.correctAnswer ? '#2f855a' : '#4a5568',
-                          fontWeight: optIndex === question.correctAnswer ? '600' : '500'
-                        }}
-                      >
-                        <span style={{ fontWeight: '700', marginRight: '6px' }}>
-                          {String.fromCharCode(65 + optIndex)}.
-                        </span>
-                        <FormattedText text={option} />
-                        {optIndex === question.correctAnswer && (
-                          <span style={{ marginLeft: '8px', fontSize: '14px' }}>✓ Correct Answer</span>
-                        )}
-                      </div>
-                    ))}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <h5 style={{ fontSize: '13px', fontWeight: '600', color: '#4a5568', margin: 0 }}>Options</h5>
+                      {editingAnswer === question._id ? (
+                        <div>
+                          <button
+                            onClick={() => handleUpdateCorrectAnswer(question._id, index)}
+                            style={{
+                              padding: '4px 12px',
+                              fontSize: '12px',
+                              backgroundColor: '#48bb78',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              marginRight: '4px'
+                            }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEditingAnswer}
+                            style={{
+                              padding: '4px 12px',
+                              fontSize: '12px',
+                              backgroundColor: '#cbd5e0',
+                              color: '#2d3748',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startEditingAnswer(question)}
+                          style={{
+                            padding: '4px 12px',
+                            fontSize: '12px',
+                            backgroundColor: '#667eea',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✏️ Edit Correct Answer
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      {question.options.map((option, optIndex) => (
+                        <div
+                          key={optIndex}
+                          onClick={() => editingAnswer === question._id && setNewCorrectAnswer(optIndex)}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            backgroundColor: editingAnswer === question._id && newCorrectAnswer === optIndex ? '#bee3f8' :
+                                             optIndex === question.correctAnswer ? '#c6f6d5' : 'white',
+                            border: editingAnswer === question._id && newCorrectAnswer === optIndex ? '2px solid #3182ce' :
+                                    optIndex === question.correctAnswer ? '1.5px solid #48bb78' : '1px solid #e2e8f0',
+                            color: optIndex === question.correctAnswer ? '#2f855a' : '#4a5568',
+                            fontWeight: optIndex === question.correctAnswer ? '600' : '500',
+                            cursor: editingAnswer === question._id ? 'pointer' : 'default',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <span style={{ fontWeight: '700', marginRight: '6px' }}>
+                            {String.fromCharCode(65 + optIndex)}.
+                          </span>
+                          <FormattedText text={option} />
+                          {editingAnswer === question._id && newCorrectAnswer === optIndex && <span style={{ marginLeft: '8px', color: '#3182ce' }}>← Select this</span>}
+                          {editingAnswer !== question._id && optIndex === question.correctAnswer && (
+                            <span style={{ marginLeft: '8px', fontSize: '14px' }}>✓ Correct Answer</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {question.explanation && (

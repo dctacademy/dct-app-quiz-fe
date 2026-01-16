@@ -139,7 +139,7 @@ function Students() {
                     <td style={{ padding: '16px 12px', fontSize: '13px', color: '#718096', fontWeight: '600' }}>
                       {index + 1}
                     </td>
-                    <td style={{ padding: '16px 12px', fontSize: '14px', color: '#2d3748', fontWeight: '600' }}>
+                    <td style={{ padding: '16px 12px', fontSize: '14px', color: '#2d3748', fontWeight: '600', textTransform: 'capitalize' }}>
                       {student.name}
                     </td>
                     <td style={{ padding: '16px 12px', fontSize: '13px', color: '#4a5568' }}>
@@ -213,7 +213,7 @@ function Students() {
                   <h3 style={{ margin: '0 0 4px 0', color: '#667eea', fontSize: '20px', fontWeight: '600' }}>
                     📊 Performance Trends
                   </h3>
-                  <p style={{ margin: 0, color: '#718096', fontSize: '14px' }}>
+                  <p style={{ margin: 0, color: '#718096', fontSize: '14px', textTransform: 'capitalize' }}>
                     {selectedStudent.name}
                   </p>
                 </div>

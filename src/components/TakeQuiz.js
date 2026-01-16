@@ -3,9 +3,11 @@ import { submissionAPI } from '../services/api';
 import { FormattedText } from '../utils/formatText';
 import CodeDragDropQuestion from './CodeDragDropQuestion';
 import CodeDragDropResults from './CodeDragDropResults';
+import { useToast } from './Toast';
 
 function TakeQuiz({ quiz, onComplete }) {
   const storageKey = `quiz_progress_${quiz._id}`;
+  const { showToast } = useToast();
   
   // Initialize state from localStorage if available
   const getInitialState = () => {
@@ -35,6 +37,9 @@ function TakeQuiz({ quiz, onComplete }) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [shuffledOptions, setShuffledOptions] = useState(initialState?.shuffledOptions || {});
+  const [flaggedQuestions, setFlaggedQuestions] = useState({});
+  const [flaggingQuestion, setFlaggingQuestion] = useState(null);
+  const [flagReason, setFlagReason] = useState('');
 
   // Shuffle options for all questions on component mount
   useEffect(() => {
@@ -130,6 +135,9 @@ function TakeQuiz({ quiz, onComplete }) {
       setSubmitted(true);
       // Clear saved progress after successful submission
       localStorage.removeItem(storageKey);
+      
+      // Load existing flags for this submission
+      loadSubmissionFlags(response.data.result.submissionId);
     } catch (error) {
       console.error('Error submitting quiz:', error);
       const errorMessage = error.response?.data?.error || 
@@ -140,6 +148,44 @@ function TakeQuiz({ quiz, onComplete }) {
       setSubmitting(false); // Re-enable only on error
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSubmissionFlags = async (submissionId) => {
+    try {
+      const response = await submissionAPI.getSubmissionFlags(submissionId);
+      const flagsMap = {};
+      response.data.forEach(flag => {
+        flagsMap[flag.question.toString()] = flag;
+      });
+      setFlaggedQuestions(flagsMap);
+    } catch (error) {
+      console.error('Error loading flags:', error);
+    }
+  };
+
+  const handleFlagQuestion = async (questionId) => {
+    if (!flagReason.trim()) {
+      showToast('Please provide a reason for flagging this question', 'error');
+      return;
+    }
+
+    try {
+      await submissionAPI.flagQuestion({
+        submissionId: result.submissionId,
+        questionId: questionId,
+        reason: flagReason
+      });
+      
+      setFlaggedQuestions({
+        ...flaggedQuestions,
+        [questionId]: { status: 'pending', reason: flagReason }
+      });
+      setFlaggingQuestion(null);
+      setFlagReason('');
+      showToast('Question flagged successfully. Admin will review it.', 'success');
+    } catch (error) {
+      showToast(error.response?.data?.message || 'Failed to flag question', 'error');
     }
   };
 
@@ -430,6 +476,117 @@ function TakeQuiz({ quiz, onComplete }) {
                       </div>
                     )}
                   </div>
+
+                  {/* Flag Question Button */}
+                  <div style={{ 
+                    padding: '12px 20px', 
+                    borderTop: '1px solid #e2e8f0',
+                    backgroundColor: '#f7fafc'
+                  }}>
+                    {flaggedQuestions[item.questionId] ? (
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        fontSize: '13px',
+                        color: '#718096'
+                      }}>
+                        <span style={{ marginRight: '8px' }}>🚩</span>
+                        <span>
+                          Flagged as incorrect ({flaggedQuestions[item.questionId].status || 'pending'})
+                        </span>
+                      </div>
+                    ) : flaggingQuestion === item.questionId ? (
+                      <div>
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ 
+                            display: 'block', 
+                            fontSize: '12px', 
+                            fontWeight: '600', 
+                            color: '#2d3748',
+                            marginBottom: '4px'
+                          }}>
+                            Why do you think this answer is wrong?
+                          </label>
+                          <textarea
+                            value={flagReason}
+                            onChange={(e) => setFlagReason(e.target.value)}
+                            placeholder="Explain why you believe the correct answer is wrong..."
+                            style={{
+                              width: '100%',
+                              minHeight: '60px',
+                              padding: '8px',
+                              fontSize: '13px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e0',
+                              resize: 'vertical'
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => handleFlagQuestion(item.questionId)}
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#fff',
+                              backgroundColor: '#f56565',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Submit Flag
+                          </button>
+                          <button
+                            onClick={() => {
+                              setFlaggingQuestion(null);
+                              setFlagReason('');
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#4a5568',
+                              backgroundColor: '#e2e8f0',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setFlaggingQuestion(item.questionId)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          color: '#c53030',
+                          backgroundColor: 'transparent',
+                          border: '1px solid #fc8181',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.backgroundColor = '#fff5f5';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <span>🚩</span>
+                        <span>Flag as Wrong Answer</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -469,6 +626,28 @@ function TakeQuiz({ quiz, onComplete }) {
               ⏱️ {formatTime(timeLeft)}
             </div>
           </div>
+          
+          {/* Tags display */}
+          {quiz.tags && quiz.tags.length > 0 && (
+            <div style={{ marginBottom: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {quiz.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    padding: '3px 10px',
+                    background: '#eef2ff',
+                    color: '#667eea',
+                    borderRadius: '12px',
+                    fontSize: '11px',
+                    fontWeight: '500',
+                    border: '1px solid #c7d2fe'
+                  }}
+                >
+                  🏷️ {tag.name || tag}
+                </span>
+              ))}
+            </div>
+          )}
           
           <div style={{ 
             height: '6px', 
@@ -628,6 +807,8 @@ function TakeQuiz({ quiz, onComplete }) {
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
                 onPaste={(e) => e.preventDefault()}
+                onDrop={(e) => e.preventDefault()}
+                onDragOver={(e) => e.preventDefault()}
                 placeholder="Write your answer here..."
                 rows="8"
                 style={{

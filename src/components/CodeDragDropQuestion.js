@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { FormattedText } from '../utils/formatText';
 
 // Simple syntax highlighter for inline code
 const highlightCodeInline = (code, language = 'javascript') => {
@@ -94,6 +95,44 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
       setFilledBlanks(currentAnswer);
     }
   }, [currentAnswer]);
+
+  // Auto-scroll when dragging near viewport edges
+  useEffect(() => {
+    if (!activeId) return;
+
+    let scrollInterval;
+    const handleMouseMove = (e) => {
+      const scrollThreshold = 100;
+      const scrollSpeed = 10;
+      const { clientY } = e;
+      const viewportHeight = window.innerHeight;
+
+      // Clear any existing interval
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+
+      // Scroll up when near top
+      if (clientY < scrollThreshold) {
+        scrollInterval = setInterval(() => {
+          window.scrollBy(0, -scrollSpeed);
+        }, 16);
+      }
+      // Scroll down when near bottom
+      else if (clientY > viewportHeight - scrollThreshold) {
+        scrollInterval = setInterval(() => {
+          window.scrollBy(0, scrollSpeed);
+        }, 16);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (scrollInterval) clearInterval(scrollInterval);
+    };
+  }, [activeId]);
 
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
@@ -231,6 +270,21 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
+        {/* Question Text */}
+        {question.question && (
+          <div style={{ marginBottom: '16px' }}>
+            <h4 style={{ 
+              margin: 0, 
+              fontSize: '15px', 
+              fontWeight: '600', 
+              color: '#2d3748',
+              lineHeight: '1.6'
+            }}>
+              <FormattedText text={question.question} />
+            </h4>
+          </div>
+        )}
+
         {/* Code Display */}
         <div style={{ marginBottom: '20px' }}>
           <div style={{
@@ -254,7 +308,7 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
               Available Options (drag to blanks):
             </h4>
             <span style={{ fontSize: '13px', color: '#718096' }}>
-              Filled: {filledCount}/{totalBlanks}
+              {filledCount}/{totalBlanks}
             </span>
           </div>
           
@@ -271,7 +325,7 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
               <Draggable key={option} id={option}>
                 <div
                   style={{
-                    padding: '8px 14px',
+                    padding: '10px 14px',
                     backgroundColor: 'white',
                     border: '2px solid #667eea',
                     borderRadius: '6px',
@@ -291,7 +345,7 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
           </div>
           
           <small style={{ display: 'block', marginTop: '8px', color: '#718096', fontSize: '12px' }}>
-            💡 Tip: Options can be reused. Drag the same option to multiple blanks if needed.
+            💡 Tip: Options can be reused. Drag near top/bottom edges to auto-scroll.
           </small>
         </div>
 
@@ -320,8 +374,8 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
 }
 
 // Draggable Component
-function Draggable({ id, children }) {
-  const [isDragging, setIsDragging] = useState(false);
+function Draggable({ id, children, onDragStateChange }) {
+  const [isDraggingLocal, setIsDraggingLocal] = useState(false);
   
   return (
     <div
@@ -329,10 +383,14 @@ function Draggable({ id, children }) {
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', id);
-        setIsDragging(true);
+        setIsDraggingLocal(true);
+        if (onDragStateChange) onDragStateChange(true);
       }}
-      onDragEnd={() => setIsDragging(false)}
-      style={{ opacity: isDragging ? 0.5 : 1 }}
+      onDragEnd={() => {
+        setIsDraggingLocal(false);
+        if (onDragStateChange) onDragStateChange(false);
+      }}
+      style={{ opacity: isDraggingLocal ? 0.5 : 1 }}
     >
       {children}
     </div>
@@ -379,6 +437,7 @@ function Droppable({ id, children }) {
 // Simplified version using native drag and drop (fallback)
 function CodeDragDropQuestionSimple({ question, onAnswerChange, currentAnswer }) {
   const [filledBlanks, setFilledBlanks] = useState(currentAnswer || {});
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (currentAnswer) {
@@ -405,6 +464,44 @@ function CodeDragDropQuestionSimple({ question, onAnswerChange, currentAnswer })
     window.addEventListener('codedrop', handleCustomDrop);
     return () => window.removeEventListener('codedrop', handleCustomDrop);
   }, [onAnswerChange]);
+
+  // Auto-scroll when dragging near viewport edges
+  useEffect(() => {
+    if (!isDragging) return;
+
+    let scrollInterval;
+    const handleDragOver = (e) => {
+      const scrollThreshold = 100;
+      const scrollSpeed = 10;
+      const { clientY } = e;
+      const viewportHeight = window.innerHeight;
+
+      // Clear any existing interval
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+
+      // Scroll up when near top
+      if (clientY < scrollThreshold) {
+        scrollInterval = setInterval(() => {
+          window.scrollBy(0, -scrollSpeed);
+        }, 16);
+      }
+      // Scroll down when near bottom
+      else if (clientY > viewportHeight - scrollThreshold) {
+        scrollInterval = setInterval(() => {
+          window.scrollBy(0, scrollSpeed);
+        }, 16);
+      }
+    };
+
+    window.addEventListener('dragover', handleDragOver);
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      if (scrollInterval) clearInterval(scrollInterval);
+    };
+  }, [isDragging]);
 
   const handleRemoveOption = (blankId) => {
     const newFilledBlanks = { ...filledBlanks };
@@ -454,6 +551,21 @@ function CodeDragDropQuestionSimple({ question, onAnswerChange, currentAnswer })
 
   return (
     <div>
+      {/* Question Text */}
+      {question.question && (
+        <div style={{ marginBottom: '16px' }}>
+          <h4 style={{ 
+            margin: 0, 
+            fontSize: '15px', 
+            fontWeight: '600', 
+            color: '#2d3748',
+            lineHeight: '1.6'
+          }}>
+            <FormattedText text={question.question} />
+          </h4>
+        </div>
+      )}
+
       {/* Code Display */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{
@@ -541,9 +653,9 @@ function CodeDragDropQuestionSimple({ question, onAnswerChange, currentAnswer })
           border: '2px solid #e2e8f0'
         }}>
           {question.options?.map((option) => (
-            <Draggable key={option} id={option}>
+            <Draggable key={option} id={option} onDragStateChange={setIsDragging}>
               <div style={{
-                padding: '8px 14px',
+                padding: '10px 14px',
                 backgroundColor: 'white',
                 border: '2px solid #667eea',
                 borderRadius: '6px',
@@ -562,7 +674,7 @@ function CodeDragDropQuestionSimple({ question, onAnswerChange, currentAnswer })
         </div>
         
         <small style={{ display: 'block', marginTop: '8px', color: '#718096', fontSize: '12px' }}>
-          💡 Tip: Options can be reused. Drag the same option to multiple blanks if needed.
+          💡 Tip: Options can be reused. Drag near top/bottom edges to auto-scroll.
         </small>
       </div>
     </div>
