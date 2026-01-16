@@ -46,6 +46,7 @@ function AdminDashboard() {
 
   useEffect(() => {
     fetchQuizzes(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
   const fetchQuizzes = async (page = 1) => {

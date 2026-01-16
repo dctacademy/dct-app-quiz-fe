@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { FormattedText } from '../utils/formatText';
 
 // Simple syntax highlighter for inline code
@@ -78,6 +76,7 @@ const highlightCodeInline = (code, language = 'javascript') => {
   return parts;
 };
 
+// eslint-disable-next-line no-unused-vars
 function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
   const [filledBlanks, setFilledBlanks] = useState(currentAnswer || {});
   const [activeId, setActiveId] = useState(null);
@@ -167,7 +166,6 @@ function CodeDragDropQuestion({ question, onAnswerChange, currentAnswer }) {
     return codeLines.map((line, lineIndex) => {
       let parts = [];
       let remaining = line;
-      let lastIndex = 0;
       
       // Find all blank placeholders in this line
       question.blanks.forEach((blank) => {

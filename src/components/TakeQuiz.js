@@ -62,6 +62,7 @@ function TakeQuiz({ quiz, onComplete }) {
       shuffled[question._id] = shuffledArray;
     });
     setShuffledOptions(shuffled);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quiz]);
 
   // Save progress to localStorage whenever state changes
@@ -77,7 +78,8 @@ function TakeQuiz({ quiz, onComplete }) {
       };
       localStorage.setItem(storageKey, JSON.stringify(progressData));
     }
-  }, [currentQuestion, answers, hintsUnlocked, timeLeft, shuffledOptions, submitted, quiz._id, storageKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestion, answers, hintsUnlocked, timeLeft, submitted, quiz._id, storageKey]);
 
   useEffect(() => {
     if (submitted) return;
@@ -94,6 +96,7 @@ function TakeQuiz({ quiz, onComplete }) {
     }, 1000);
 
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
 
   const handleAnswerSelect = (questionId, answer) => {
@@ -607,7 +610,6 @@ function TakeQuiz({ quiz, onComplete }) {
   const progress = ((currentQuestion + 1) / quiz.questions.length) * 100;
   const currentQ = quiz.questions[currentQuestion];
   const currentShuffledOptions = shuffledOptions[currentQ._id] || [];
-  const isAnswered = answers[currentQ._id] !== undefined;
 
   return (
     <div className="container">

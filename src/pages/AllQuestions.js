@@ -37,6 +37,7 @@ function AllQuestions() {
 
   useEffect(() => {
     fetchAllQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, currentLimit]);
 
   const fetchAllQuestions = async () => {

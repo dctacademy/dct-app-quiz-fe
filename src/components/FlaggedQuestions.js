@@ -14,10 +14,6 @@ function FlaggedQuestions({ onBack }) {
   const [editingAnswer, setEditingAnswer] = useState(null);
   const [newCorrectAnswer, setNewCorrectAnswer] = useState('');
 
-  useEffect(() => {
-    fetchFlaggedQuestions();
-  }, [filterStatus]);
-
   const fetchFlaggedQuestions = async () => {
     setLoading(true);
     try {
@@ -30,6 +26,11 @@ function FlaggedQuestions({ onBack }) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchFlaggedQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus]);
 
   const handleUpdateFlag = async (flagId, status) => {
     setUpdatingFlag(flagId);

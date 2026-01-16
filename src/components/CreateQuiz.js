@@ -63,7 +63,6 @@ function CreateQuiz({ onQuizCreated }) {
   
   // CodeDragDrop questions state
   const [codeDragDropQuestions, setCodeDragDropQuestions] = useState([]);
-  const [showCodeDragDropForm, setShowCodeDragDropForm] = useState(false);
   
   // Essay grading settings
   const [essayGradingMode, setEssayGradingMode] = useState('afterSubmission');

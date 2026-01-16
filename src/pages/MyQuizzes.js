@@ -32,6 +32,7 @@ function MyQuizzes() {
 
   useEffect(() => {
     fetchMySubmissions(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
   const fetchMySubmissions = async (page = 1) => {

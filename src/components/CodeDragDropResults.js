@@ -1,6 +1,4 @@
 import React from 'react';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Simple syntax highlighter for inline code
 const highlightCodeInline = (code, language = 'javascript') => {

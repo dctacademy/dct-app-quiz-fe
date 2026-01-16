@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { quizAPI } from '../services/api';
 import TakeQuiz from '../components/TakeQuiz';
 
@@ -8,7 +7,6 @@ function UserDashboard() {
   const [quiz, setQuiz] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
